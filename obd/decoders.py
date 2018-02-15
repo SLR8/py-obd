@@ -236,6 +236,7 @@ def elm_voltage(messages):
     v = messages[0].frames[0].raw
 
     try:
+        v = v.split("V")[0]
         return float(v) * Unit.volt
     except ValueError:
         logger.warning("Failed to parse ELM voltage")
