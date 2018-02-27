@@ -55,7 +55,7 @@ class ELM327:
             ecus()
     """
 
-    ELM_PROMPT = b'>'
+    ELM_PROMPT = b'\r>'
 
     _SUPPORTED_PROTOCOLS = {
         #"0" : None, # Automatic Mode. This isn't an actual protocol. If the
@@ -447,8 +447,8 @@ class ELM327:
 
             buffer.extend(data)
 
-            # end on chevron (ELM prompt character)
-            if self.ELM_PROMPT in buffer:
+            # end on chevron + carriage return (ELM prompt characters)
+            if buffer.endswith(self.ELM_PROMPT):
                 break
 
         # log, and remove the "bytearray(   ...   )" part
@@ -457,9 +457,9 @@ class ELM327:
         # clean out any null characters
         buffer = re.sub(b"\x00", b"", buffer)
 
-        # remove the prompt character
+        # remove the prompt characters
         if buffer.endswith(self.ELM_PROMPT):
-            buffer = buffer[:-1]
+            buffer = buffer[:-len(self.ELM_PROMPT)]
 
         # convert bytes into a standard string
         string = buffer.decode()
