@@ -364,7 +364,6 @@ class ELM327:
 
         if self.__port is not None:
             logger.info("closing port")
-            self.__write(b"ATZ")
             self.__port.close()
             self.__port = None
 
