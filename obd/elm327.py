@@ -138,9 +138,9 @@ class ELM327:
             self.__error("Failed to set baudrate")
             return
 
-        # ---------------------------- ATZ (reset) ----------------------------
+        # ---------------------------- ATI (get ID) ---------------------------
         try:
-            self.__send(b"ATZ", delay=1) # wait 1 second for ELM to initialize
+            self.__send(b"ATI", delay=1) # wait 1 second for ELM to initialize
             # return data can be junk, so don't bother checking
         except serial.SerialException as e:
             self.__error(e)
