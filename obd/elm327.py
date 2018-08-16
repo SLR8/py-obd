@@ -96,14 +96,13 @@ class ELM327:
     # Once pyserial supports non-standard baud rates on platforms other
     # than Linux, we'll add 500K to this list.
     #
-    # We check the two default baud rates first, then go fastest to
+    # We check the the default baud rate first, then go fastest to
     # slowest, on the theory that anyone who's using a slow baud rate is
     # going to be less picky about the time required to detect it.
-    _TRY_BAUDS = [ 38400, 9600, 230400, 115200, 57600, 19200 ]
+    _TRY_BAUDS = [9600, 576000, 230400, 115200, 57600, 38400, 19200]
 
 
-
-    def __init__(self, portname, baudrate, protocol):
+    def __init__(self, portname, baudrate, protocol, is_echo=True):
         """Initializes port by resetting device and gettings supported PIDs. """
 
         logger.info("Initializing ELM327: PORT=%s BAUD=%s PROTOCOL=%s" %
@@ -116,15 +115,15 @@ class ELM327:
         self.__status   = OBDStatus.NOT_CONNECTED
         self.__port     = None
         self.__protocol = UnknownProtocol([])
-
+        self.__is_echo  = is_echo
 
         # ------------- open port -------------
         try:
-            self.__port = serial.Serial(portname, \
-                                        parity   = serial.PARITY_NONE, \
-                                        stopbits = 1, \
+            self.__port = serial.Serial(portname,
+                                        parity   = serial.PARITY_NONE,
+                                        stopbits = 1,
                                         bytesize = 8,
-                                        timeout = 10) # seconds
+                                        timeout  = 10) # seconds
         except serial.SerialException as e:
             self.__error(e)
             return
@@ -146,21 +145,21 @@ class ELM327:
             self.__error(e)
             return
 
-        # -------------------------- ATE0 (echo OFF) --------------------------
-        r = self.__send(b"ATE0")
-        if not self.__isok(r, expectEcho=True):
-            self.__error("ATE0 did not return 'OK'")
+        # -------------------------- ATE1/ATE0 (echo ON/OFF) --------------------------
+        r = self.__send(b"ATE{:d}".format(self.__is_echo))
+        if not self.__is_ok(r, expect_echo=True):
+            self.__error("ATE{:d} did not return 'OK'".format(self.__is_echo))
             return
 
         # ------------------------- ATH1 (headers ON) -------------------------
         r = self.__send(b"ATH1")
-        if not self.__isok(r):
+        if not self.__is_ok(r):
             self.__error("ATH1 did not return 'OK', or echoing is still ON")
             return
 
         # ------------------------ ATL0 (linefeeds OFF) -----------------------
         r = self.__send(b"ATL0")
-        if not self.__isok(r):
+        if not self.__is_ok(r):
             self.__error("ATL0 did not return 'OK'")
             return
 
@@ -259,16 +258,18 @@ class ELM327:
         if baud is None:
             # when connecting to pseudo terminal, don't bother with auto baud
             if self.port_name().startswith("/dev/pts"):
-                logger.debug("Detected pseudo terminal, skipping baudrate setup")
+                logger.warning("Detected pseudo terminal, skipping baudrate setup")
                 return True
             else:
-                return self.auto_baudrate()
+                return self.auto_baudrate(self._TRY_BAUDS)
+        elif isinstance(baud, list):
+            return self.auto_baudrate(baud)
         else:
             self.__port.baudrate = baud
             return True
 
 
-    def auto_baudrate(self):
+    def auto_baudrate(self, choices):
         """
         Detect the baud rate at which a connected ELM32x interface is operating.
         Returns boolean for success.
@@ -278,7 +279,7 @@ class ELM327:
         timeout = self.__port.timeout
         self.__port.timeout = 0.1 # we're only talking with the ELM, so things should go quickly
 
-        for baud in self._TRY_BAUDS:
+        for baud in choices:
             self.__port.baudrate = baud
             self.__port.flushInput()
             self.__port.flushOutput()
@@ -300,16 +301,15 @@ class ELM327:
                 return True
 
 
-        logger.debug("Failed to choose baud")
+        logger.error("Failed to choose baudrate")
         self.__port.timeout = timeout # reinstate our original timeout
         return False
 
 
-
-    def __isok(self, lines, expectEcho=False):
+    def __is_ok(self, lines, expect_echo=False):
         if not lines:
             return False
-        if expectEcho:
+        if self.__is_echo or expect_echo:
             # don't test for the echo itself
             # allow the adapter to already have echo disabled
             return self.__has_message(lines, 'OK')
@@ -404,7 +404,18 @@ class ELM327:
             logger.debug("wait: %d seconds" % delay)
             time.sleep(delay)
 
-        return self.__read()
+        lines = self.__read()
+
+        # get rid of echo if on
+        if self.__is_echo and len(lines) > 1:
+
+            # sanity check if echo matches sent command
+            if cmd != lines[0]:
+                logger.warning("Sent command does not match echo: '{:}' != '{:}'".format(cmd, lines[0]))
+
+            lines = lines[1:]
+
+        return lines
 
 
     def __write(self, cmd):
