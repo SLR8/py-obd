@@ -55,10 +55,10 @@ class OBD(object):
         self.__last_command = b"" # used for running the previous command with a CR
         self.__frame_counts = {} # keeps track of the number of return frames for each command
 
-        logger.info("======================= python-OBD (v%s) =======================" % __version__)
+        logger.debug("======================= python-OBD (v%s) =======================" % __version__)
         self.__connect(portstr, baudrate, protocol) # initialize by connecting and loading sensors
         self.__load_commands()            # try to load the car's supported commands
-        logger.info("===================================================================")
+        logger.debug("===================================================================")
 
 
     def __connect(self, portstr, baudrate, protocol):
@@ -82,7 +82,7 @@ class OBD(object):
                 if self.interface.status() >= OBDStatus.ELM_CONNECTED:
                     break # success! stop searching for serial
         else:
-            logger.info("Explicit port defined")
+            logger.debug("Explicit port defined")
             self.interface = ELM327(portstr, baudrate, protocol)
 
         # if the connection failed, close it
@@ -251,9 +251,9 @@ class OBD(object):
             return OBDResponse()
 
         # send command and retrieve message
-        logger.info("Sending command: %s" % str(cmd))
+        logger.debug("Sending command: %s" % str(cmd))
         cmd_string = self.__build_command_string(cmd)
-        messages = self.interface.send_and_parse(cmd_string)
+        messages = self.interface.send(cmd_string)
 
         # if we're sending a new command, note it
         # first check that the current command WASN'T sent as an empty CR
@@ -267,10 +267,29 @@ class OBD(object):
             self.__frame_counts[cmd] = sum([len(m.frames) for m in messages])
 
         if not messages:
-            logger.info("No valid OBD Messages returned")
+            logger.warning("No valid OBD Messages returned")
             return OBDResponse()
 
         return cmd(messages) # compute a response object
+
+
+    def execute(self, cmd_string):
+        """
+            Low-level execute function.
+        """
+
+        if self.status() == OBDStatus.NOT_CONNECTED:
+            logger.warning("Execute failed, no connection available")
+            return
+
+        logger.debug("Executing command: %s" % str(cmd_string))
+        lines = self.interface.send(cmd_string, parse=False)
+
+        if not lines:
+            logger.warning("No execution response lines returned")
+            return
+
+        return lines
 
 
     def __build_command_string(self, cmd):

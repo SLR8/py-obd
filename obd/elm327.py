@@ -47,7 +47,7 @@ class ELM327:
         After instantiation with a portname (/dev/ttyUSB0, etc...),
         the following functions become available:
 
-            send_and_parse()
+            send()
             close()
             status()
             port_name()
@@ -239,7 +239,7 @@ class ELM327:
             # an unknown protocol
             # this is likely because not all adapter/car combinations work
             # in "auto" mode. Some respond to ATDPN responded with "0"
-            logger.debug("ELM responded with unknown protocol. Trying them one-by-one")
+            logger.info("ELM responded with unknown protocol. Trying them one-by-one")
 
             for p in self._TRY_PROTOCOL_ORDER:
                 r = self.__send(b"ATTP" + p.encode())
@@ -363,28 +363,32 @@ class ELM327:
         self.__protocol = None
 
         if self.__port is not None:
-            logger.info("closing port")
+            logger.info("Closing port")
             self.__port.close()
             self.__port = None
 
 
-    def send_and_parse(self, cmd):
+    def send(self, cmd, parse=True):
         """
             send() function used to service all OBDCommands
 
-            Sends the given command string, and parses the
-            response lines with the protocol object.
+            Sends the given command string, and if requested
+            parses the response lines with the protocol object.
 
             An empty command string will re-trigger the previous command
 
-            Returns a list of Message objects
+            Returns a list of parsed Message objects or raw response lines
         """
 
         if self.__status == OBDStatus.NOT_CONNECTED:
-            logger.info("cannot send_and_parse() when unconnected")
+            logger.info("Cannot send when unconnected")
             return None
 
         lines = self.__send(cmd)
+
+        if not parse:
+            return lines
+
         messages = self.__protocol(lines)
         return messages
 
@@ -401,7 +405,7 @@ class ELM327:
         self.__write(cmd)
 
         if delay is not None:
-            logger.debug("wait: %d seconds" % delay)
+            logger.debug("Wait: %d seconds" % delay)
             time.sleep(delay)
 
         lines = self.__read()
@@ -430,7 +434,7 @@ class ELM327:
             self.__port.write(cmd) # turn the string into bytes and write
             self.__port.flush() # wait for the output buffer to finish transmitting
         else:
-            logger.info("cannot perform __write() when unconnected")
+            logger.info("Cannot perform __write() when unconnected")
 
 
     def __read(self):
@@ -441,7 +445,7 @@ class ELM327:
             returns a list of [/r/n] delimited strings
         """
         if not self.__port:
-            logger.info("cannot perform __read() when unconnected")
+            logger.info("Cannot perform __read() when unconnected")
             return []
 
         buffer = bytearray()

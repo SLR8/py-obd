@@ -41,7 +41,7 @@ class FakeELM:
     def close(self):
         pass
 
-    def send_and_parse(self, cmd):
+    def send(self, cmd):
         # stow this, so we can check that the API made the right request
         print(cmd)
         self._last_command = cmd
