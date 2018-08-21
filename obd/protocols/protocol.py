@@ -123,8 +123,8 @@ class Protocol(object):
 
     # override in subclass for each protocol
 
-    ELM_NAME = "" # the ELM's name for this protocol (ie, "SAE J1939 (CAN 29/250)")
-    ELM_ID = ""   # the ELM's ID for this protocol (ie, "A")
+    NAME = "" # the ELM's name for this protocol (ie, "SAE J1939 (CAN 29/250)")
+    ID = ""   # the ELM's ID for this protocol (ie, "A")
 
     # the TX_IDs of known ECUs
     TX_ID_ENGINE = None

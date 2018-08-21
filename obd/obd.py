@@ -34,10 +34,11 @@
 import logging
 
 from .__version__ import __version__
-from .elm327 import ELM327
+from .interfaces import *
 from .commands import commands
 from .OBDResponse import OBDResponse
 from .utils import scan_serial, OBDStatus
+
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class OBD(object):
         with it's assorted commands/sensors.
     """
 
-    def __init__(self, portstr=None, baudrate=None, protocol=None, fast=True):
+    def __init__(self, portstr=None, baudrate=None, protocol=None, fast=True, interface_cls=ELM327):
         self.interface = None
         self.supported_commands = set(commands.base_commands())
         self.fast = fast # global switch for disabling optimizations
@@ -56,12 +57,12 @@ class OBD(object):
         self.__frame_counts = {} # keeps track of the number of return frames for each command
 
         logger.debug("======================= python-OBD (v%s) =======================" % __version__)
-        self.__connect(portstr, baudrate, protocol) # initialize by connecting and loading sensors
+        self.__connect(interface_cls, portstr, baudrate, protocol) # initialize by connecting and loading sensors
         self.__load_commands()            # try to load the car's supported commands
         logger.debug("===================================================================")
 
 
-    def __connect(self, portstr, baudrate, protocol):
+    def __connect(self, interface_cls, portstr, baudrate, protocol):
         """
             Attempts to instantiate an ELM327 connection object.
         """
@@ -77,13 +78,13 @@ class OBD(object):
 
             for port in portnames:
                 logger.info("Attempting to use port: " + str(port))
-                self.interface = ELM327(port, baudrate, protocol)
+                self.interface = interface_cls(port, baudrate, protocol)
 
                 if self.interface.status() >= OBDStatus.ELM_CONNECTED:
                     break # success! stop searching for serial
         else:
             logger.debug("Explicit port defined")
-            self.interface = ELM327(portstr, baudrate, protocol)
+            self.interface = interface_cls(portstr, baudrate, protocol)
 
         # if the connection failed, close it
         if self.interface.status() == OBDStatus.NOT_CONNECTED:
@@ -165,20 +166,20 @@ class OBD(object):
     #         return self.interface.ecus()
 
 
-    def protocol_name(self):
-        """ returns the name of the protocol being used by the ELM327 """
+    def protocol_info(self):
+        """ Returns the ID and name of the protocol being used by the interface """
         if self.interface is None:
-            return ""
+            return {}
         else:
-            return self.interface.protocol_name()
+            return self.interface.protocol_info()
 
 
-    def protocol_id(self):
-        """ returns the ID of the protocol being used by the ELM327 """
+    def supported_protocols(self):
+        """ Returns all protocols supported by the interface """
         if self.interface is None:
-            return ""
+            return {}
         else:
-            return self.interface.protocol_id()
+            return self.interface.supported_protocols()
 
 
     def port_name(self):
@@ -228,7 +229,7 @@ class OBD(object):
             return False
 
         # mode 06 is only implemented for the CAN protocols
-        if cmd.mode == 6 and self.interface.protocol_id() not in ["6", "7", "8", "9"]:
+        if cmd.mode == 6 and self.interface.protocol().ID not in ["6", "7", "8", "9"]:
             if warn:
                 logger.warning("Mode 06 commands are only supported over CAN protocols")
             return False

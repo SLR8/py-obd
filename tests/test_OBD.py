@@ -32,11 +32,11 @@ class FakeELM:
     def ecus(self):
         return [ ECU.ENGINE, ECU.UNKNOWN ]
 
-    def protocol_name(self):
-        return "ISO 15765-4 (CAN 11/500)"
-
-    def protocol_id(self):
-        return "6"
+    def protocol_info(self):
+        return {
+            "id": "6",
+            "name": "ISO 15765-4 (CAN 11/500)"
+        }
 
     def close(self):
         pass
@@ -126,26 +126,6 @@ def test_port_name():
 
     o.interface = FakeELM("A different port name")
     assert o.port_name() == o.interface._portname
-
-
-def test_protocol_name():
-    o = obd.OBD("/dev/null")
-
-    o.interface = None
-    assert o.protocol_name() == ""
-
-    o.interface = FakeELM("/dev/null")
-    assert o.protocol_name() == o.interface.protocol_name()
-
-
-def test_protocol_id():
-    o = obd.OBD("/dev/null")
-
-    o.interface = None
-    assert o.protocol_id() == ""
-
-    o.interface = FakeELM("/dev/null")
-    assert o.protocol_id() == o.interface.protocol_id()
 
 
 

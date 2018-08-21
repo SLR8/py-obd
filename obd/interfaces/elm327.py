@@ -34,13 +34,83 @@ import re
 import serial
 import time
 import logging
-from .protocols import *
-from .utils import OBDStatus
+from ..protocols import *
+from ..utils import OBDStatus
+
 
 logger = logging.getLogger(__name__)
 
 
-class ELM327:
+########################################################################
+# Protocol definitions
+########################################################################
+
+class SAE_J1850_PWM(LegacyProtocol):
+    NAME = "SAE J1850 PWM"
+    ID = "1"
+    def __init__(self, lines_0100):
+        LegacyProtocol.__init__(self, lines_0100)
+
+class SAE_J1850_VPW(LegacyProtocol):
+    NAME = "SAE J1850 VPW"
+    ID = "2"
+    def __init__(self, lines_0100):
+        LegacyProtocol.__init__(self, lines_0100)
+
+class ISO_9141_2(LegacyProtocol):
+    NAME = "ISO 9141-2"
+    ID = "3"
+    def __init__(self, lines_0100):
+        LegacyProtocol.__init__(self, lines_0100)
+
+class ISO_14230_4_5baud(LegacyProtocol):
+    NAME = "ISO 14230-4 (KWP 5BAUD)"
+    ID = "4"
+    def __init__(self, lines_0100):
+        LegacyProtocol.__init__(self, lines_0100)
+
+class ISO_14230_4_fast(LegacyProtocol):
+    NAME = "ISO 14230-4 (KWP FAST)"
+    ID = "5"
+    def __init__(self, lines_0100):
+        LegacyProtocol.__init__(self, lines_0100)
+
+class ISO_15765_4_11bit_500k(CANProtocol):
+    NAME = "ISO 15765-4 (CAN 11/500)"
+    ID = "6"
+    def __init__(self, lines_0100):
+        CANProtocol.__init__(self, lines_0100, id_bits=11)
+
+class ISO_15765_4_29bit_500k(CANProtocol):
+    NAME = "ISO 15765-4 (CAN 29/500)"
+    ID = "7"
+    def __init__(self, lines_0100):
+        CANProtocol.__init__(self, lines_0100, id_bits=29)
+
+class ISO_15765_4_11bit_250k(CANProtocol):
+    NAME = "ISO 15765-4 (CAN 11/250)"
+    ID = "8"
+    def __init__(self, lines_0100):
+        CANProtocol.__init__(self, lines_0100, id_bits=11)
+
+class ISO_15765_4_29bit_250k(CANProtocol):
+    NAME = "ISO 15765-4 (CAN 29/250)"
+    ID = "9"
+    def __init__(self, lines_0100):
+        CANProtocol.__init__(self, lines_0100, id_bits=29)
+
+class SAE_J1939(CANProtocol):
+    NAME = "SAE J1939 (CAN 29/250)"
+    ID = "A"
+    def __init__(self, lines_0100):
+        CANProtocol.__init__(self, lines_0100, id_bits=29)
+
+
+########################################################################
+# Interface implementation
+########################################################################
+
+class ELM327(object):
     """
         Handles communication with the ELM327 adapter.
 
@@ -173,17 +243,21 @@ class ELM327:
                         (
                             portname,
                             self.__port.baudrate,
-                            self.__protocol.ELM_ID,
+                            self.__protocol.ID,
                         ))
         else:
             logger.error("Connected to the adapter, but failed to connect to the vehicle")
 
 
+    def supported_protocols(self):
+        return self._SUPPORTED_PROTOCOLS
+
+
     def set_protocol(self, protocol):
         if protocol is not None:
             # an explicit protocol was specified
-            if protocol not in self._SUPPORTED_PROTOCOLS:
-                logger.error("%s is not a valid protocol. Please use \"1\" through \"A\"")
+            if protocol not in self.supported_protocols():
+                logger.error("%s is not a valid protocol", protocol)
                 return False
             return self.manual_protocol(protocol)
         else:
@@ -193,14 +267,23 @@ class ELM327:
 
     def manual_protocol(self, protocol):
         r = self.__send(b"ATTP" + protocol.encode())
+        if not self.__has_message(r, "OK"):
+            logger.error("Got unexpected response when attempting to manually change to protocol ID '{:}': {:}".format(protocol, r))
+            return False
+
+        r = self.__send(b"ATDPN")
+        if not self.__has_message(r, protocol):
+            logger.error("Manually changed protocol ID '{:}' does not match currently active protocol ID '{:}'".format(protocol, r))
+            return False
+
         r0100 = self.__send(b"0100")
-
         if not self.__has_message(r0100, "UNABLE TO CONNECT"):
-            # success, found the protocol
-            self.__protocol = self._SUPPORTED_PROTOCOLS[protocol](r0100)
-            return True
+            self.__protocol = self.supported_protocols()[protocol](r0100)
+        else:
+            logger.error("Unable to connect using protocol ID '{:}'".format(protocol))
+            return False
 
-        return False
+        return True
 
 
     def auto_protocol(self):
@@ -231,9 +314,9 @@ class ELM327:
         p = p[1:] if (len(p) > 1 and p.startswith("A")) else p
 
         # check if the protocol is something we know
-        if p in self._SUPPORTED_PROTOCOLS:
+        if p in self.supported_protocols():
             # jackpot, instantiate the corresponding protocol handler
-            self.__protocol = self._SUPPORTED_PROTOCOLS[p](r0100)
+            self.__protocol = self.supported_protocols()[p](r0100)
             return True
         else:
             # an unknown protocol
@@ -246,7 +329,7 @@ class ELM327:
                 r0100 = self.__send(b"0100")
                 if not self.__has_message(r0100, "UNABLE TO CONNECT"):
                     # success, found the protocol
-                    self.__protocol = self._SUPPORTED_PROTOCOLS[p](r0100)
+                    self.__protocol = self.supported_protocols()[p](r0100)
                     return True
 
         # if we've come this far, then we have failed...
@@ -345,12 +428,15 @@ class ELM327:
         return self.__protocol.ecu_map.values()
 
 
-    def protocol_name(self):
-        return self.__protocol.ELM_NAME
+    def protocol(self):
+        return self.__protocol
 
 
-    def protocol_id(self):
-        return self.__protocol.ELM_ID
+    def protocol_info(self):
+        return {
+            "id": self.__protocol.ID,
+            "name": self.__protocol.NAME
+        }
 
 
     def close(self):
