@@ -2,6 +2,7 @@ import logging
 
 from .elm327 import ELM327
 from ..protocols import *
+from ..utils import OBDStatus
 
 
 logger = logging.getLogger(__name__)
@@ -211,6 +212,32 @@ class STN11XX(ELM327):
 
         super(STN11XX, self).__init__(*args, **kwargs)
 
+    def set_baudrate(self, baudrate):
+
+        # Set baudrate as usual if not already connected
+        if self._ELM327__status == OBDStatus.NOT_CONNECTED:
+            return super(STN11XX, self).set_baudrate(baudrate)  
+
+        # If already connected try to change baudrate (if different from current)
+        port = self._ELM327__port
+        if baudrate != port.baudrate:
+            try:
+
+                # Tell STN1XX to switch to new baudrate
+                self._ELM327__write(b"STSBR" + str(baudrate).encode())
+
+                port.baudrate = baudrate
+
+                port.close()
+                port.open()
+            except:
+                logger.exception("Failed to change baudrate to '{:}' for serial connection".format(baudrate))
+                self.close()
+
+                return False
+
+        return True
+
     def supported_protocols(self):
         ret = {}
         ret.update(self._SUPPORTED_PROTOCOLS)
@@ -221,14 +248,14 @@ class STN11XX(ELM327):
     def set_protocol(self, protocol, baudrate=None):
         ret = super(STN11XX, self).set_protocol(protocol)
 
-        # Set protocol baudrate if specified
+        # Also set protocol baudrate if specified
         if baudrate != None:
             r = self._ELM327__send(b"STPBR" + str(baudrate).encode())
             if not self._ELM327__has_message(r, "OK"):
                 logger.error("Got unexpected response when setting baudrate '{:}' for protocol ID '{:}': {:}".format(baudrate, protocol, r))
                 return False
 
-        # Determine protocol baudrate
+        # Always determine protocol baudrate
         r = self._ELM327__send(b"STPBRR")
         self.__protocol_baudrate = next(iter(r), None)
 
@@ -264,6 +291,7 @@ class STN11XX(ELM327):
 
     def protocol_info(self):
         ret = super(STN11XX, self).protocol_info()
-        ret["baudrate"] = self.__protocol_baudrate
+        if self.__protocol_baudrate != None:
+            ret["baudrate"] = int(self.__protocol_baudrate)
 
         return ret

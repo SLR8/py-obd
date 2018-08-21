@@ -85,9 +85,9 @@ connection.status() == OBDStatus.CAR_CONNECTED
 
 ---
 
-### port_name()
+### connection_info()
 
-Returns the string name for the currently connected port (`"/dev/ttyUSB0"`). If no connection was made, this function returns an empty string.
+Returns the string name for the currently connected port (`"/dev/ttyUSB0"`) and currently used baudrate. If no connection was made, this function returns an empty dictionary.
 
 ---
 

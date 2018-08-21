@@ -166,6 +166,14 @@ class OBD(object):
     #         return self.interface.ecus()
 
 
+    def connection_info(self):
+        """ Returns info of the serial connection  """
+        if self.interface is None:
+            return {}
+        else:
+            return self.interface.connection_info()
+
+
     def protocol_info(self):
         """ Returns the ID and name of the protocol being used by the interface """
         if self.interface is None:
@@ -182,12 +190,17 @@ class OBD(object):
             return self.interface.supported_protocols()
 
 
-    def port_name(self):
-        """ Returns the name of the currently connected port """
-        if self.interface is not None:
-            return self.interface.port_name()
-        else:
-            return ""
+    def change_protocol(self, protocol, baudrate=None, reload_commands=True):
+        """ Change protocol for interface """
+        if self.interface is None:
+            return False
+
+        ret = self.interface.set_protocol(protocol, baudrate=baudrate)
+
+        if reload_commands:
+            self.__load_commands()
+
+        return ret
 
 
     def is_connected(self):

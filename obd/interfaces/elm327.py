@@ -120,8 +120,6 @@ class ELM327(object):
             send()
             close()
             status()
-            port_name()
-            protocol_name()
             ecus()
     """
 
@@ -173,7 +171,9 @@ class ELM327(object):
 
 
     def __init__(self, portname, baudrate, protocol, is_echo=True):
-        """Initializes port by resetting device and gettings supported PIDs. """
+        """
+        Initializes port by resetting device and gettings supported PIDs.
+        """
 
         logger.info("Initializing ELM327: PORT=%s BAUD=%s PROTOCOL=%s" %
                     (
@@ -340,7 +340,7 @@ class ELM327(object):
     def set_baudrate(self, baud):
         if baud is None:
             # when connecting to pseudo terminal, don't bother with auto baud
-            if self.port_name().startswith("/dev/pts"):
+            if self.__port.portstr.startswith("/dev/pts"):
                 logger.warning("Detected pseudo terminal, skipping baudrate setup")
                 return True
             else:
@@ -348,8 +348,13 @@ class ELM327(object):
         elif isinstance(baud, list):
             return self.auto_baudrate(baud)
         else:
-            self.__port.baudrate = baud
-            return True
+
+            # Create a list of choices with given baudrate as first entry
+            choices = list(self._TRY_BAUDS)
+            choices.remove(baud)
+            choices.insert(0, baud)
+
+            return self.auto_baudrate(choices)
 
 
     def auto_baudrate(self, choices):
@@ -379,10 +384,9 @@ class ELM327(object):
 
             # watch for the prompt character
             if response.endswith(b">"):
-                logger.debug("Choosing baud %d" % baud)
+                logger.info("Choosing baudrate: %d" % baud)
                 self.__port.timeout = timeout # reinstate our original timeout
                 return True
-
 
         logger.error("Failed to choose baudrate")
         self.__port.timeout = timeout # reinstate our original timeout
@@ -413,11 +417,11 @@ class ELM327(object):
         logger.error(str(msg))
 
 
-    def port_name(self):
-        if self.__port is not None:
-            return self.__port.portstr
-        else:
-            return ""
+    def connection_info(self):
+        return {
+            "port": self.__port.portstr,
+            "baudrate": self.__port.baudrate
+        } if self.__port else {}
 
 
     def status(self):
@@ -436,7 +440,7 @@ class ELM327(object):
         return {
             "id": self.__protocol.ID,
             "name": self.__protocol.NAME
-        }
+        } if self.__protocol else {}
 
 
     def close(self):

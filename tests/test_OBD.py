@@ -23,8 +23,11 @@ class FakeELM:
         self._status = OBDStatus.CAR_CONNECTED
         self._last_command = None
 
-    def port_name(self):
-        return self._portname
+    def connection_info(self):
+        return {
+            "port": self._portname,
+            "baudrate": 9600
+        }
 
     def status(self):
         return self._status
@@ -113,19 +116,6 @@ def test_supports():
 
     # commands that aren't in python-OBD's tables are unsupported by default
     assert not o.supports(command)
-
-
-def test_port_name():
-    """
-        Make sure that the API's port_name() function reports the
-        same values as the underlying ELM327 class.
-    """
-    o = obd.OBD("/dev/null")
-    o.interface = FakeELM("/dev/null")
-    assert o.port_name() == o.interface._portname
-
-    o.interface = FakeELM("A different port name")
-    assert o.port_name() == o.interface._portname
 
 
 
