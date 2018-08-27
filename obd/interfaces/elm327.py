@@ -570,7 +570,7 @@ class ELM327(object):
             raise Exception("Cannot write when serial connection is not open")
 
         cmd += b"\r\n"  # Terminate
-        logger.info("Write: " + repr(cmd))
+        logger.debug("Write: " + repr(cmd))
 
         self._port.flushInput()  # Dump everything in the input buffer
         self._port.write(cmd)  # Turn the string into bytes and write
@@ -618,7 +618,7 @@ class ELM327(object):
                 interrupt_delay = None
 
         # Log, and remove the "bytearray(   ...   )" part
-        logger.info("Read: " + repr(buffer)[10:-1])
+        logger.debug("Read: " + repr(buffer)[10:-1])
 
         # Clean out any null characters
         buffer = re.sub(b"\x00", b"", buffer)
