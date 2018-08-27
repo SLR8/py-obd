@@ -168,9 +168,11 @@ class SWC_ISO_15765_29bit_33k3(CANProtocol):
 class STN11XX(ELM327):
     """
         Handles communication with the STN11XX adapter.
+
+        See: https://www.scantool.net/scantool/downloads/234/stn1100-frpm-preliminary.pdf
     """
 
-    _STN_SUPPORTED_PROTOCOLS = {
+    STN_SUPPORTED_PROTOCOLS = {
 
         # J1850
         J1850_PWM.ID:                 J1850_PWM,                 # J1850 PWM
@@ -207,91 +209,126 @@ class STN11XX(ELM327):
         SWC_ISO_15765_29bit_33k3.ID:  SWC_ISO_15765_29bit_33k3,   # SW CAN (ISO 15765, 29bit, 33.3kbps, DLC=8)
     }
 
+
     def __init__(self, *args, **kwargs):
-        self.__protocol_baudrate = None
+        self._protocol_baudrate = None
 
         super(STN11XX, self).__init__(*args, **kwargs)
+
 
     def set_baudrate(self, baudrate):
 
         # Set baudrate as usual if not already connected
-        if self._ELM327__status == OBDStatus.NOT_CONNECTED:
-            return super(STN11XX, self).set_baudrate(baudrate)  
+        if self._status == OBDStatus.NOT_CONNECTED:
+            super(STN11XX, self).set_baudrate(baudrate)
+
+            return
 
         # If already connected try to change baudrate (if different from current)
-        port = self._ELM327__port
-        if baudrate != port.baudrate:
-            try:
+        if baudrate != self._port.baudrate:
 
-                # Tell STN1XX to switch to new baudrate
-                self._ELM327__write(b"STSBR" + str(baudrate).encode())
+            # Tell STN1XX to switch to new baudrate
+            self._write(b"STSBR" + str(baudrate).encode())
+            logger.info("Changed serial connection baudrate from '{:}' to '{:}'".format(self._port.baudrate, baudrate))
 
-                port.baudrate = baudrate
+            super(STN11XX, self).set_baudrate(baudrate)
 
-                port.close()
-                port.open()
-            except:
-                logger.exception("Failed to change baudrate to '{:}' for serial connection".format(baudrate))
-                self.close()
-
-                return False
-
-        return True
 
     def supported_protocols(self):
         ret = {}
-        ret.update(self._SUPPORTED_PROTOCOLS)
-        ret.update(self._STN_SUPPORTED_PROTOCOLS)
+        ret.update(self.SUPPORTED_PROTOCOLS)
+        ret.update(self.STN_SUPPORTED_PROTOCOLS)
 
         return ret
+
 
     def set_protocol(self, protocol, baudrate=None):
         ret = super(STN11XX, self).set_protocol(protocol)
 
         # Also set protocol baudrate if specified
         if baudrate != None:
-            r = self._ELM327__send(b"STPBR" + str(baudrate).encode())
-            if not self._ELM327__has_message(r, "OK"):
-                logger.error("Got unexpected response when setting baudrate '{:}' for protocol ID '{:}': {:}".format(baudrate, protocol, r))
-                return False
+            res = self.send(b"STPBR" + str(baudrate).encode())
+            if not self._is_ok(res,):
+                raise Exception("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, protocol, res))
 
         # Always determine protocol baudrate
-        r = self._ELM327__send(b"STPBRR")
-        self.__protocol_baudrate = next(iter(r), None)
+        res = self.send(b"STPBRR")
+        self._protocol_baudrate = next(iter(res), None)
 
         return ret
 
-    def manual_protocol(self, protocol):
-
-        # Call super method if not a STN protocol
-        if not protocol in self._STN_SUPPORTED_PROTOCOLS:
-            return super(STN11XX, self).manual_protocol(protocol)
-
-        # Change protocol
-        r = self._ELM327__send(b"STP" + protocol.encode())
-        if not self._ELM327__has_message(r, "OK"):
-            logger.error("Got unexpected response when attempting to manually change to protocol ID '{:}': {:}".format(protocol, r))
-            return False
-
-        # Verify protocol is changed
-        r = self._ELM327__send(b"STPR")
-        if not self._ELM327__has_message(r, protocol):
-            logger.error("Manually changed protocol ID '{:}' does not match currently active protocol ID '{:}'".format(protocol, r))
-            return False
-
-        # Verify connection
-        r0100 = self._ELM327__send(b"0100")
-        if not self._ELM327__has_message(r0100, "UNABLE TO CONNECT"):
-            self._ELM327__protocol = self.supported_protocols()[protocol](r0100)
-        else:
-            logger.error("Unable to connect using protocol ID '{:}'".format(protocol))
-            return False
-
-        return True
 
     def protocol_info(self):
         ret = super(STN11XX, self).protocol_info()
-        if self.__protocol_baudrate != None:
-            ret["baudrate"] = int(self.__protocol_baudrate)
+        if self._protocol_baudrate != None:
+            ret["baudrate"] = int(self._protocol_baudrate)
 
         return ret
+
+
+    def set_can_monitor_mode(self, value):
+        """
+        Set CAN monitoring mode.
+
+        Mode options:
+            0 = Receive only - no CAN ACKs (default)
+            1 = Normal node - with CAN ACKs
+            2 = Receive all frames, including frames with errors - no CAN ACKs
+        """
+
+        if value == self._can_monitor_mode:
+            return
+
+        res = self.send(b"STCMM" + str(mode).encode())
+        if not self._is_ok(res):
+            raise Exception("Invalid response when setting CAN monitoring mode '{:}': {:}".format(value, res))
+
+        logger.info("Changed CAN monitoring mode from '{:}' to '{:}'".format(self._can_monitor_mode, value))
+        self._can_monitor_mode = value
+
+
+    def monitor_all(self, duration=10, mode=0, auto_format=True):
+        """
+        Monitor all messages on OBD bus. For CAN protocols, all messages will be treated as ISO 15765.
+        """
+
+        # Set CAN monitoring mode
+        self.set_can_monitor_mode(mode)
+
+        # Set CAN automatic formatting
+        self.set_can_auto_format(auto_format)
+
+        timeout = self._port.timeout
+        self._port.timeout = duration
+
+        try:
+            return self.send(b"STMA", interrupt_delay=duration)
+        finally:
+            self._port.timeout = timeout
+
+
+    def _manual_protocol(self, protocol):
+
+        # Call super method if not a STN protocol
+        if not protocol in self.STN_SUPPORTED_PROTOCOLS:
+            return super(STN11XX, self)._manual_protocol(protocol)
+
+        # Change protocol
+        res = self.send(b"STP" + protocol.encode())
+        if not self._is_ok(res):
+            raise Exception("Invalid response when manually changing to protocol '{:}': {:}".format(protocol, res))
+
+        # Verify protocol connectivity
+        r0100 = self.query(b"0100")
+        if self._has_message(r0100, "UNABLE TO CONNECT", "CAN ERROR"):
+            self._protocol = self.supported_protocols()[protocol]([])
+            raise Exception("Unable to verify connectivity of protocol '{:}': {:}".format(protocol, r0100))
+
+        # Verify protocol changed
+        res = self.send(b"STPR")
+        if not self._has_message(res, protocol):
+            raise Exception("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(protocol, res))
+
+        # Initialize protocol parser
+        self._protocol = self.supported_protocols()[protocol](r0100)
+        logger.info("Protocol '{:}' set manually: {:}".format(protocol, self._protocol))

@@ -64,32 +64,42 @@ class OBD(object):
 
     def __connect(self, interface_cls, portstr, baudrate, protocol):
         """
-            Attempts to instantiate an ELM327 connection object.
+            Attempts to instantiate and open an ELM327 interface connection object.
         """
 
-        if portstr is None:
-            logger.info("Using scan_serial to select port")
-            portnames = scan_serial()
-            logger.info("Available ports: " + str(portnames))
+        self.interface = interface_cls()
 
+        if portstr is None:
+            logger.info("Using serial scan to select port")
+
+            portnames = scan_serial()
             if not portnames:
                 logger.warning("No OBD-II adapters found")
                 return
 
-            for port in portnames:
-                logger.info("Attempting to use port: " + str(port))
-                self.interface = interface_cls(port, baudrate, protocol)
+            logger.info("Available ports: " + str(portnames))
 
-                if self.interface.status() >= OBDStatus.ELM_CONNECTED:
-                    break # success! stop searching for serial
+            for port in portnames:
+                logger.info("Attempting to use port '{:}' ".format(port))
+
+                try:
+                    self.interface.open(port, baudrate, protocol)
+                    if self.interface.status() >= OBDStatus.ELM_CONNECTED:
+                        break # success! stop searching for serial
+
+                except:
+                    logger.exception("Failed to use port '{:}'".format(port))
+
         else:
             logger.debug("Explicit port defined")
-            self.interface = interface_cls(portstr, baudrate, protocol)
 
-        # if the connection failed, close it
+            try:
+                self.interface.open(portstr, baudrate, protocol)
+            except:
+                logger.exception("Failed to use explicit port '{:}'".format(portstr))
+
         if self.interface.status() == OBDStatus.NOT_CONNECTED:
-            # the ELM327 class will report its own errors
-            self.close()
+            raise Exception("Failed to connect to interface '{:}' - see log for details".format(interface_cls))
 
 
     def __load_commands(self):
@@ -132,7 +142,7 @@ class OBD(object):
                     if mode == 1 and commands.has_pid(2, pid):
                         self.supported_commands.add(commands[2][pid])
 
-        logger.info("finished querying with %d commands supported" % len(self.supported_commands))
+        logger.info("Finished querying with %d commands supported" % len(self.supported_commands))
 
 
     def close(self):
@@ -192,8 +202,9 @@ class OBD(object):
 
     def change_protocol(self, protocol, baudrate=None, reload_commands=True):
         """ Change protocol for interface """
-        if self.interface is None:
-            return False
+
+        if self.status() == OBDStatus.NOT_CONNECTED:
+            raise Exception("Not connected")
 
         ret = self.interface.set_protocol(protocol, baudrate=baudrate)
 
@@ -264,10 +275,10 @@ class OBD(object):
         if not force and not self.test_cmd(cmd):
             return OBDResponse()
 
-        # send command and retrieve message
-        logger.debug("Sending command: %s" % str(cmd))
+        # query command and retrieve message
+        logger.debug("Querying command: %s" % str(cmd))
         cmd_string = self.__build_command_string(cmd)
-        messages = self.interface.send(cmd_string)
+        messages = self.interface.query(cmd_string, parse=True)
 
         # if we're sending a new command, note it
         # first check that the current command WASN'T sent as an empty CR
@@ -287,21 +298,22 @@ class OBD(object):
         return cmd(messages) # compute a response object
 
 
-    def execute(self, cmd_string):
+    def send(self, cmd_string, header=None, auto_format=True):
         """
-            Low-level execute function.
+            Low-level send/execute function.
         """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
-            logger.warning("Execute failed, no connection available")
-            return
+            raise Exception("Not connected")
 
-        logger.debug("Executing command: %s" % str(cmd_string))
-        lines = self.interface.send(cmd_string, parse=False)
+        # Set given header or use default
+        self.interface.set_header(ELM327.OBD_HEADER if header == None else header)
 
-        if not lines:
-            logger.warning("No execution response lines returned")
-            return
+        # Set CAN automatic formatting
+        self.interface.set_can_auto_format(auto_format)
+
+        logger.debug("Sending: %s" % str(cmd_string))
+        lines = self.interface.send(cmd_string)
 
         return lines
 
