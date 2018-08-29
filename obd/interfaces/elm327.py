@@ -181,44 +181,49 @@ class ELM327(object):
                 # Ensure CAN automatic formatting is enabled
                 self.set_can_auto_format(True)
 
+                # Ensure responses are turned on
+                self.set_responses(True)
+
                 return func(self, *args, **kwargs)
 
             return decorator
 
 
-    def __init__(self):
+    def __init__(self, port, timeout=10, is_echo=True):
         """
         Initializes interface instance.
         """
 
-        self._status           = OBDStatus.NOT_CONNECTED
-        self._port             = None
-        self._protocol         = UnknownProtocol([])
-        self._is_echo          = True
-        self._header           = self.OBD_HEADER
+        self._status              = OBDStatus.NOT_CONNECTED
+        self._protocol            = UnknownProtocol([])
+        self._is_echo             = True
+        self._is_responses        = True
+        self._header              = self.OBD_HEADER
         
-        self._can_auto_format  = True
-        self._can_monitor_mode = 0
+        self._is_can_auto_format  = True
+        self._can_monitor_mode    = 0
+
+        self._port = serial.Serial(parity   = serial.PARITY_NONE,
+                                   stopbits = 1,
+                                   bytesize = 8,
+                                   timeout  = timeout)  # Seconds
+        self._port.port = port
 
 
-    def open(self, port, baudrate, protocol, timeout=10, is_echo=True):
+    def open(self, baudrate, protocol):
         """
         Opens serial connection and initializes ELM327 interface.
         """
 
         logger.info("Opening interface connection: Port={:}, Baudrate={:}, Protocol={:}".format(
-            port,
+            self._port.port,
             "auto" if baudrate is None else baudrate,
             "auto" if protocol is None else protocol
         ))
 
         # Open serial connection
         try:
-            self._port = serial.Serial(port,
-                                       parity   = serial.PARITY_NONE,
-                                       stopbits = 1,
-                                       bytesize = 8,
-                                       timeout  = timeout)  # Seconds
+            self._port.open()
         except:
             logger.exception("Failed to open serial connection")
             raise
@@ -239,11 +244,9 @@ class ELM327(object):
             # Return data can be junk, so don't bother checking
 
             # Set echo on/off
-            res = self.send(b"ATE{:d}".format(is_echo))
+            res = self.send(b"ATE{:d}".format(self._is_echo))
             if not self._is_ok(res, expect_echo=True):
-                raise Exception("Invalid response when setting echo '{:}': {:}".format(is_echo, res))
-            else:
-                self._is_echo = is_echo
+                raise Exception("Invalid response when setting echo '{:}': {:}".format(self._is_echo, res))
 
             # Set headers on
             res = self.send(b"ATH1")
@@ -274,7 +277,7 @@ class ELM327(object):
         self._status = OBDStatus.CAR_CONNECTED
 
         logger.info("Connected successfully to car: Port={:}, Baudrate={:}, Protocol={:}".format(
-            port,
+            self._port.port,
             self._port.baudrate,
             self._protocol.ID,
         ))
@@ -282,7 +285,7 @@ class ELM327(object):
 
     def close(self):
         """
-        Closes connection to ELM327 interface.
+        Closes connection to interface.
         """
 
         self._status = OBDStatus.NOT_CONNECTED
@@ -291,7 +294,36 @@ class ELM327(object):
             logger.info("Closing serial connection")
 
             self._port.close()
-            self._port = None
+
+
+    def reopen(self):
+        """
+        Closes and opens connection again to interface.
+        """
+
+        self.close()
+        self.open(
+            self._port.baudrate if self._port else None,
+            self._protocol.ID if self._protocol else None
+        )
+
+
+    def warm_reset(self):
+        """
+        Keeps the user selected baud rate.
+        """
+
+        self.send(b"ATWS")
+        self.reopen()
+
+
+    def reset(self):
+        """
+        Resets all.
+        """
+
+        self.send(b"ATZ")
+        self.reopen()
 
 
     def connection_info(self):
@@ -366,9 +398,25 @@ class ELM327(object):
             self._manual_protocol(protocol)
 
 
+    def set_responses(self, value):
+        """
+        Turn responses on or off
+        """
+
+        if value == self._is_responses:
+            return
+
+        res = self.send(b"ATR" + str(int(value)).encode())
+        if not self._is_ok(res):
+            raise Exception("Invalid response when setting responses '{:}': {:}".format(value, res))
+
+        logger.debug("Changed responses from '{:}' to '{:}'".format(self._is_responses, value))
+        self._is_responses = value
+
+
     def set_header(self, value):
         """
-        Set header.
+        Set header value to use when sending request(s).
         """
 
         if value == self._header:
@@ -378,7 +426,7 @@ class ELM327(object):
         if not self._is_ok(res):
             raise Exception("Invalid response when setting header '{:}': {:}".format(value, res))
 
-        logger.info("Changed header from '{:}' to '{:}'".format(self._header, value))
+        logger.debug("Changed header from '{:}' to '{:}'".format(self._header, value))
         self._header = value
 
 
@@ -387,15 +435,15 @@ class ELM327(object):
         Enable/disable CAN automatic formatting.
         """
 
-        if value == self._can_auto_format:
+        if value == self._is_can_auto_format:
             return
 
         res = self.send(b"ATCAF" + str(int(value)).encode())
         if not self._is_ok(res):
             raise Exception("Invalid response when setting CAN automatic formatting '{:}': {:}".format(value, res))
 
-        logger.info("Changed CAN automatic formatting from '{:}' to '{:}'".format(self._can_auto_format, value))
-        self._can_auto_format = value
+        logger.debug("Changed CAN automatic formatting from '{:}' to '{:}'".format(self._is_can_auto_format, value))
+        self._is_can_auto_format = value
 
 
     @Decorators.ensure_obd_mode
@@ -546,7 +594,7 @@ class ELM327(object):
 
         # Trying them one-by-one
         for pro in self.TRY_PROTOCOL_ORDER:
-            res = self.send(b"ATTP" + p.encode())
+            res = self.send(b"ATTP" + pro.encode())
 
             r0100 = self.query(b"0100")
             if not self._has_message(r0100, "UNABLE TO CONNECT", "CAN ERROR"):

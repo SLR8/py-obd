@@ -67,8 +67,6 @@ class OBD(object):
             Attempts to instantiate and open an ELM327 interface connection object.
         """
 
-        self.interface = interface_cls()
-
         if portstr is None:
             logger.info("Using serial scan to select port")
 
@@ -82,8 +80,9 @@ class OBD(object):
             for port in portnames:
                 logger.info("Attempting to use port '{:}' ".format(port))
 
+                self.interface = interface_cls(port)
                 try:
-                    self.interface.open(port, baudrate, protocol)
+                    self.interface.open(baudrate, protocol)
                     if self.interface.status() >= OBDStatus.ELM_CONNECTED:
                         break # success! stop searching for serial
 
@@ -93,8 +92,9 @@ class OBD(object):
         else:
             logger.debug("Explicit port defined")
 
+            self.interface = interface_cls(portstr)
             try:
-                self.interface.open(portstr, baudrate, protocol)
+                self.interface.open(baudrate, protocol)
             except:
                 logger.exception("Failed to use explicit port '{:}'".format(portstr))
 
@@ -263,8 +263,7 @@ class OBD(object):
 
     def query(self, cmd, force=False):
         """
-            primary API function. Sends commands to the car, and
-            protects against sending unsupported commands.
+            Sends commands to the car, and protects against sending unsupported commands.
         """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
@@ -298,9 +297,9 @@ class OBD(object):
         return cmd(messages) # compute a response object
 
 
-    def send(self, cmd_string, header=None, auto_format=True):
+    def send(self, msg_string, header=None, auto_format=False, expect_response=False):
         """
-            Low-level send/execute function.
+            Low-level function that sends raw messages on bus.
         """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
@@ -312,10 +311,47 @@ class OBD(object):
         # Set CAN automatic formatting
         self.interface.set_can_auto_format(auto_format)
 
-        logger.debug("Sending: %s" % str(cmd_string))
+        # Set responses expected or not
+        self.interface.set_responses(expect_response)
+
+        logger.debug("Sending message: %s" % str(msg_string))
+        lines = self.interface.send(msg_string)
+
+        return lines
+
+
+    def execute(self, cmd_string):
+        """
+            Low-level function that executes AT and ST commands.
+        """
+
+        cmd_string = cmd_string.upper()
+        if not cmd_string[:2] in ["AT", "ST"]:
+            raise ValueError("Only AT and ST commands supported")
+
+        if self.status() == OBDStatus.NOT_CONNECTED:
+            raise Exception("Not connected")
+
+        logger.debug("Executing command: %s" % str(cmd_string))
         lines = self.interface.send(cmd_string)
 
         return lines
+
+
+    def reset(self, mode="warm"):
+        """
+            Reboots interface and re-initializes connection and configuration settings.
+        """
+
+        if self.status() == OBDStatus.NOT_CONNECTED:
+            raise Exception("Not connected")
+
+        if not mode or mode.lower() == "warm":
+            self.interface.warm_reset()
+        elif mode.lower() == "cold":
+            self.interface.reset()
+        else:
+            raise ValueError("Unsupported reset mode")
 
 
     def __build_command_string(self, cmd):

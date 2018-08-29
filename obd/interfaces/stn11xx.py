@@ -245,13 +245,14 @@ class STN11XX(ELM327):
     def set_protocol(self, protocol, baudrate=None):
         ret = super(STN11XX, self).set_protocol(protocol)
 
+        # TODO HN: Must be set before protocol is opened for the first time (before sending '0100')
         # Also set protocol baudrate if specified
         if baudrate != None:
             res = self.send(b"STPBR" + str(baudrate).encode())
             if not self._is_ok(res,):
                 raise Exception("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, protocol, res))
 
-        # Always determine protocol baudrate
+        # Always determine current protocol baudrate
         res = self.send(b"STPBRR")
         self._protocol_baudrate = next(iter(res), None)
 
@@ -318,17 +319,11 @@ class STN11XX(ELM327):
         if not self._is_ok(res):
             raise Exception("Invalid response when manually changing to protocol '{:}': {:}".format(protocol, res))
 
-        # Verify protocol connectivity
-        r0100 = self.query(b"0100")
-        if self._has_message(r0100, "UNABLE TO CONNECT", "CAN ERROR"):
-            self._protocol = self.supported_protocols()[protocol]([])
-            raise Exception("Unable to verify connectivity of protocol '{:}': {:}".format(protocol, r0100))
-
         # Verify protocol changed
         res = self.send(b"STPR")
         if not self._has_message(res, protocol):
             raise Exception("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(protocol, res))
 
         # Initialize protocol parser
-        self._protocol = self.supported_protocols()[protocol](r0100)
+        self._protocol = self.supported_protocols()[protocol]([])
         logger.info("Protocol '{:}' set manually: {:}".format(protocol, self._protocol))
