@@ -209,6 +209,11 @@ class STN11XX(ELM327):
         SWC_ISO_15765_29bit_33k3.ID:  SWC_ISO_15765_29bit_33k3,   # SW CAN (ISO 15765, 29bit, 33.3kbps, DLC=8)
     }
 
+    # We check the the default baud rate first, then go fastest to
+    # slowest, on the theory that anyone who's using a slow baud rate is
+    # going to be less picky about the time required to detect it.
+    TRY_BAUDRATES = [9600, 2304000, 1152000, 576000, 230400, 115200, 57600, 38400, 19200]
+
 
     def __init__(self, *args, **kwargs):
         self._protocol_baudrate = None

@@ -159,10 +159,10 @@ class ELM327(object):
     # Once pyserial supports non-standard baud rates on platforms other
     # than Linux, we'll add 500K to this list.
     #
-    # We check the the default baud rate first, then go fastest to
+    # We check the two default baud rates first, then go fastest to
     # slowest, on the theory that anyone who's using a slow baud rate is
     # going to be less picky about the time required to detect it.
-    TRY_BAUDRATES = [9600, 576000, 230400, 115200, 57600, 38400, 19200]
+    TRY_BAUDRATES = [38400, 9600, 230400, 115200, 57600, 38400, 19200]
 
     # OBD functional address
     OBD_HEADER = "7DF" 
@@ -189,14 +189,14 @@ class ELM327(object):
             return decorator
 
 
-    def __init__(self, port, timeout=10, is_echo=True):
+    def __init__(self, port, timeout=10, is_echo=False):
         """
         Initializes interface instance.
         """
 
         self._status              = OBDStatus.NOT_CONNECTED
         self._protocol            = UnknownProtocol([])
-        self._is_echo             = True
+        self._is_echo             = is_echo
         self._is_responses        = True
         self._header              = self.OBD_HEADER
         
@@ -410,7 +410,9 @@ class ELM327(object):
         if not self._is_ok(res):
             raise Exception("Invalid response when setting responses '{:}': {:}".format(value, res))
 
-        logger.debug("Changed responses from '{:}' to '{:}'".format(self._is_responses, value))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Changed responses from '{:}' to '{:}'".format(self._is_responses, value))
+
         self._is_responses = value
 
 
@@ -426,7 +428,9 @@ class ELM327(object):
         if not self._is_ok(res):
             raise Exception("Invalid response when setting header '{:}': {:}".format(value, res))
 
-        logger.debug("Changed header from '{:}' to '{:}'".format(self._header, value))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Changed header from '{:}' to '{:}'".format(self._header, value))
+
         self._header = value
 
 
@@ -442,7 +446,9 @@ class ELM327(object):
         if not self._is_ok(res):
             raise Exception("Invalid response when setting CAN automatic formatting '{:}': {:}".format(value, res))
 
-        logger.debug("Changed CAN automatic formatting from '{:}' to '{:}'".format(self._is_can_auto_format, value))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Changed CAN automatic formatting from '{:}' to '{:}'".format(self._is_can_auto_format, value))
+
         self._is_can_auto_format = value
 
 
@@ -480,7 +486,10 @@ class ELM327(object):
         self._write(cmd)
 
         if delay is not None:
-            logger.debug("Wait %d seconds" % delay)
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Wait %d seconds" % delay)
+
             time.sleep(delay)
 
         lines = self._read(interrupt_delay=interrupt_delay)
@@ -521,7 +530,9 @@ class ELM327(object):
                 self._port.flush()
 
                 res = self._port.read(1024)
-                logger.debug("Response from baudrate choice '%d': %s" % (baudrate, repr(res)))
+
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("Response from baudrate choice '%d': %s" % (baudrate, repr(res)))
 
                 # Watch for the prompt character
                 if res.endswith(self.ELM_PROMPT):
@@ -618,7 +629,9 @@ class ELM327(object):
             raise Exception("Cannot write when serial connection is not open")
 
         cmd += b"\r\n"  # Terminate
-        logger.debug("Write: " + repr(cmd))
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Write: " + repr(cmd))
 
         self._port.flushInput()  # Dump everything in the input buffer
         self._port.write(cmd)  # Turn the string into bytes and write
@@ -666,7 +679,8 @@ class ELM327(object):
                 interrupt_delay = None
 
         # Log, and remove the "bytearray(   ...   )" part
-        logger.debug("Read: " + repr(buffer)[10:-1])
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Read: " + repr(buffer)[10:-1])
 
         # Clean out any null characters
         buffer = re.sub(b"\x00", b"", buffer)

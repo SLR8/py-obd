@@ -275,7 +275,9 @@ class OBD(object):
             return OBDResponse()
 
         # query command and retrieve message
-        logger.debug("Querying command: %s" % str(cmd))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Querying command: %s" % str(cmd))
+            
         cmd_string = self.__build_command_string(cmd)
         messages = self.interface.query(cmd_string, parse=True)
 
@@ -314,7 +316,9 @@ class OBD(object):
         # Set responses expected or not
         self.interface.set_responses(expect_response)
 
-        logger.debug("Sending message: %s" % str(msg_string))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Sending message: %s" % str(msg_string))
+
         lines = self.interface.send(msg_string)
 
         return lines
@@ -332,7 +336,9 @@ class OBD(object):
         if self.status() == OBDStatus.NOT_CONNECTED:
             raise Exception("Not connected")
 
-        logger.debug("Executing command: %s" % str(cmd_string))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Executing command: %s" % str(cmd_string))
+
         lines = self.interface.send(cmd_string)
 
         return lines
