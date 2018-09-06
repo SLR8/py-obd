@@ -31,10 +31,10 @@
 #                                                                      #
 ########################################################################
 
+import logging
 import re
 import serial
 import time
-import logging
 
 from timeit import default_timer as timer
 from ..protocols import *
@@ -167,6 +167,10 @@ class ELM327(object):
     # OBD functional address
     OBD_HEADER = "7DF" 
 
+    # Programmable parameter IDs
+    PP_ATH = "01"
+    PP_ATE = "09"
+
 
     class Decorators(object):
 
@@ -182,25 +186,27 @@ class ELM327(object):
                 self.set_can_auto_format(True)
 
                 # Ensure responses are turned on
-                self.set_responses(True)
+                self.set_expect_responses(True)
 
                 return func(self, *args, **kwargs)
 
             return decorator
 
 
-    def __init__(self, port, timeout=10, is_echo=False):
+    def __init__(self, port, timeout=10):
         """
         Initializes interface instance.
         """
 
         self._status              = OBDStatus.NOT_CONNECTED
         self._protocol            = UnknownProtocol([])
-        self._is_echo             = is_echo
-        self._is_responses        = True
+
+        # Default values for settings
+        self._echo_off            = False
+        self._print_headers       = False
+        self._expect_responses    = True
         self._header              = self.OBD_HEADER
-        
-        self._is_can_auto_format  = True
+        self._can_auto_format     = True
         self._can_monitor_mode    = 0
 
         self._port = serial.Serial(parity   = serial.PARITY_NONE,
@@ -210,7 +216,7 @@ class ELM327(object):
         self._port.port = port
 
 
-    def open(self, baudrate, protocol):
+    def open(self, baudrate, protocol, echo_off=True, print_headers=True):
         """
         Opens serial connection and initializes ELM327 interface.
         """
@@ -239,24 +245,35 @@ class ELM327(object):
         # Configure ELM settings
         try:
 
-            # Get ID
-            res = self.send(b"ATI", delay=1)  # Wait 1 second for ELM to initialize
+            # Check if ready
+            res = self.send(b"ATI", delay=1, filtering=False)  # Wait 1 second for ELM to initialize
             # Return data can be junk, so don't bother checking
 
+            # First we need to determine if echo is on or off
+            res = self.send(b"", filtering=False)
+            self._echo_off = not self._has_message(res, "ATI")
+
+            # Load current settings from programmable parameters
+            params = self._get_pps()
+
+            warm_reset = False
+
             # Set echo on/off
-            res = self.send(b"ATE{:d}".format(self._is_echo))
-            if not self._is_ok(res, expect_echo=True):
-                raise Exception("Invalid response when setting echo '{:}': {:}".format(self._is_echo, res))
+            if self._ensure_pp(params[self.PP_ATE], "FF" if echo_off else "00", default="00"):
+                warm_reset = True
+            
+            # Enable/disable printing of headers
+            if self._ensure_pp(params[self.PP_ATH], "00" if print_headers else "FF", default="FF"):
+                warm_reset = True
 
-            # Set headers on
-            res = self.send(b"ATH1")
-            if not self._is_ok(res):
-                raise Exception("Invalid response when enabling headers: {:}".format(res))
+            # Perform warm reset if changes have been made
+            if warm_reset:
+                logger.info("Performing warm reset after updating programmable parameter(s)")
+                self.send(b"ATWS")
 
-            # Set line feeds off
-            res = self.send(b"ATL0")
-            if not self._is_ok(res):
-                raise Exception("Invalid response when disabling line feeds: {:}".format(res))
+            # Finally update setting variables with possible new values
+            self._echo_off = echo_off
+            self._print_headers = print_headers
 
         except:
             logger.exception("Failed to configure ELM settings")
@@ -398,12 +415,12 @@ class ELM327(object):
             self._manual_protocol(protocol)
 
 
-    def set_responses(self, value):
+    def set_expect_responses(self, value):
         """
         Turn responses on or off
         """
 
-        if value == self._is_responses:
+        if value == self._expect_responses:
             return
 
         res = self.send(b"ATR" + str(int(value)).encode())
@@ -411,9 +428,9 @@ class ELM327(object):
             raise Exception("Invalid response when setting responses '{:}': {:}".format(value, res))
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Changed responses from '{:}' to '{:}'".format(self._is_responses, value))
+            logger.debug("Changed responses from '{:}' to '{:}'".format(self._expect_responses, value))
 
-        self._is_responses = value
+        self._expect_responses = value
 
 
     def set_header(self, value):
@@ -439,7 +456,7 @@ class ELM327(object):
         Enable/disable CAN automatic formatting.
         """
 
-        if value == self._is_can_auto_format:
+        if value == self._can_auto_format:
             return
 
         res = self.send(b"ATCAF" + str(int(value)).encode())
@@ -447,9 +464,9 @@ class ELM327(object):
             raise Exception("Invalid response when setting CAN automatic formatting '{:}': {:}".format(value, res))
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Changed CAN automatic formatting from '{:}' to '{:}'".format(self._is_can_auto_format, value))
+            logger.debug("Changed CAN automatic formatting from '{:}' to '{:}'".format(self._can_auto_format, value))
 
-        self._is_can_auto_format = value
+        self._can_auto_format = value
 
 
     @Decorators.ensure_obd_mode
@@ -475,7 +492,7 @@ class ELM327(object):
         return lines
 
 
-    def send(self, cmd, delay=None, interrupt_delay=None):
+    def send(self, cmd, delay=None, filtering=True, interrupt_delay=None):
         """
         Send raw command string.
 
@@ -494,14 +511,17 @@ class ELM327(object):
 
         lines = self._read(interrupt_delay=interrupt_delay)
 
-        # Get rid of echo if present
-        if self._is_echo and len(lines) > 0:
+        if not filtering:
+            return lines
+
+        # Filter out echo if present
+        if not self._echo_off and len(lines) > 0:
 
             # Sanity check if echo matches sent command
             if not self._has_message(lines, "NO DATA") and cmd != lines[0]:
                 logger.warning("Sent command does not match echo: '{:}' != '{:}'".format(cmd, lines[0]))
-
-            lines = lines[1:]
+            else:
+                lines = lines[1:]
 
         return lines
 
@@ -583,7 +603,7 @@ class ELM327(object):
         # Get protocol number
         res = self.send(b"ATDPN")
         if len(res) != 1:
-            log.error("Invalid response when getting protocol number: {:}".format(res))
+            logger.error("Invalid response when getting protocol number: {:}".format(res))
             raise Exception("Failed to retrieve current protocol")
 
         pro = res[0]  # Grab the first (and only) line returned
@@ -618,6 +638,68 @@ class ELM327(object):
 
         # If we've come this far, then we have failed
         raise Exception("Unable to determine protocol automatically")
+
+
+    def _get_pps(self):
+        """
+        Retrieves all programmable parameters.
+        """
+
+        ret = {}
+
+        lines = self.send(b"ATPPS")
+        for line in lines:
+            for param in line.split("  "):
+                match = re.match("^(?P<id>[0-9A-F]{2}):(?P<value>[0-9A-F]{2}) (?P<state>[N|F]{1})$", param)
+                if match:
+                    group = match.groupdict()
+                    ret[group["id"]] = group
+                else:
+                    raise Exception("Unable to parse programmable parameter: {:}".format(param))
+
+        return ret
+
+
+    def set_pp(self, id, value, enable=None):
+        """
+        Sets value of a programmable parameter and enables it if requested.
+        """
+
+        res = self.send(b"ATPP{:s} SV{:s}".format(id, value))
+        if self._is_ok(res):
+            logger.info("Updated programmable parameter '{:}' value '{:}'".format(id, value))
+        else:
+            raise Exception("Failed to set programmable parameter '{:}' value '{:}': {:}".format(id, value, res))
+
+        if enable is not None:
+            res = self.send(b"ATPP{:s} {:s}".format(id, "ON" if enable else "OFF"))
+            if self._is_ok(res):
+                logger.info("{:} programmable parameter '{:}'".format("Enabled" if enable else "Disabled", id))
+            else:
+                raise Exception("Failed to {:} programmable parameter '{:}': {:}".format("enable" if enable else "disable", id, res))
+
+
+    def _ensure_pp(self, param, value, default=None):
+        """
+        Ensures a programmable parameter value is set if required.
+        Returns True of False indicating if changes have been made.
+        """
+
+        # Check if default value and state is already fulfilled
+        if default != None and default == value and default == param["value"] and param["state"] == "F":
+            return False
+
+        # Check if value is changed
+        if value == param["value"] and param["state"] == "N":
+            return False
+
+        # Go ahead and update parameter
+        if default != None and default == value:
+            self.set_pp(param["id"], default, enable=False)
+        else:
+            self.set_pp(param["id"], value, enable=True)
+
+        return True
 
 
     def _write(self, cmd):
@@ -702,7 +784,7 @@ class ELM327(object):
         if not lines:
             return False
 
-        if self._is_echo or expect_echo:
+        if not self._echo_off or expect_echo:
             return self._has_message(lines, "OK")
 
         return len(lines) == 1 and lines[0] == "OK"

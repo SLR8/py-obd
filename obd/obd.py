@@ -314,7 +314,7 @@ class OBD(object):
         self.interface.set_can_auto_format(auto_format)
 
         # Set responses expected or not
-        self.interface.set_responses(expect_response)
+        self.interface.set_expect_responses(expect_response)
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Sending message: %s" % str(msg_string))

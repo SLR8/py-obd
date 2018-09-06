@@ -229,14 +229,15 @@ class STN11XX(ELM327):
 
             return
 
-        # If already connected try to change baudrate (if different from current)
-        if baudrate != self._port.baudrate:
+        # Skip if baudrate is already set
+        if baudrate == self._port.baudrate:
+            return
 
-            # Tell STN1XX to switch to new baudrate
-            self._write(b"STSBR" + str(baudrate).encode())
-            logger.info("Changed serial connection baudrate from '{:}' to '{:}'".format(self._port.baudrate, baudrate))
+        # Tell STN1XX to switch to new baudrate
+        self._write(b"STSBR" + str(baudrate).encode())
+        logger.info("Changed serial connection baudrate from '{:}' to '{:}'".format(self._port.baudrate, baudrate))
 
-            super(STN11XX, self).set_baudrate(baudrate)
+        super(STN11XX, self).set_baudrate(baudrate)
 
 
     def supported_protocols(self):
