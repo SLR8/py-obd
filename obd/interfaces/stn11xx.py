@@ -248,15 +248,9 @@ class STN11XX(ELM327):
         return ret
 
 
-    def set_protocol(self, protocol, baudrate=None):
-        ret = super(STN11XX, self).set_protocol(protocol)
+    def set_protocol(self, protocol, **kwargs):
 
-        # TODO HN: Must be set before protocol is opened for the first time (before sending '0100')
-        # Also set protocol baudrate if specified
-        if baudrate != None:
-            res = self.send(b"STPBR" + str(baudrate).encode())
-            if not self._is_ok(res,):
-                raise Exception("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, protocol, res))
+        ret = super(STN11XX, self).set_protocol(protocol, **kwargs)
 
         # Always determine current protocol baudrate
         res = self.send(b"STPBRR")
@@ -314,10 +308,13 @@ class STN11XX(ELM327):
             self._port.timeout = timeout
 
 
-    def _manual_protocol(self, protocol):
+    def _manual_protocol(self, protocol, baudrate=None):
 
         # Call super method if not a STN protocol
         if not protocol in self.STN_SUPPORTED_PROTOCOLS:
+            if baudrate != None:
+                raise ValueError("Defining of custom baudrate is not supported for ELM327 protocols")
+
             return super(STN11XX, self)._manual_protocol(protocol)
 
         # Change protocol
@@ -329,6 +326,12 @@ class STN11XX(ELM327):
         res = self.send(b"STPR")
         if not self._has_message(res, protocol):
             raise Exception("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(protocol, res))
+
+        # Also set protocol baudrate if specified
+        if baudrate != None:
+            res = self.send(b"STPBR" + str(baudrate).encode())
+            if not self._is_ok(res,):
+                raise Exception("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, protocol, res))
 
         # Initialize protocol parser
         self._protocol = self.supported_protocols()[protocol]([])

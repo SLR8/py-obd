@@ -269,7 +269,7 @@ class ELM327(object):
             # Perform warm reset if changes have been made
             if warm_reset:
                 logger.info("Performing warm reset after updating programmable parameter(s)")
-                self.send(b"ATWS")
+                self.warm_reset()
 
             # Finally update setting variables with possible new values
             self._echo_off = echo_off
@@ -327,16 +327,15 @@ class ELM327(object):
 
     def warm_reset(self):
         """
-        Keeps the user selected baud rate.
+        Soft reset that keeps the user selected baud rate.
         """
 
         self.send(b"ATWS")
-        self.reopen()
 
 
     def reset(self):
         """
-        Resets all.
+        Full reset. Serial connection is closed and re-opened.
         """
 
         self.send(b"ATZ")
@@ -399,7 +398,7 @@ class ELM327(object):
         return self._SUPPORTED_PROTOCOLS
 
 
-    def set_protocol(self, protocol):
+    def set_protocol(self, protocol, **kwargs):
         if protocol is None:
 
             # Autodetect protocol
@@ -412,7 +411,7 @@ class ELM327(object):
                 raise Exception("Unsupported protocol '{:}'".format(protocol))
 
             # Set explicit protocol
-            self._manual_protocol(protocol)
+            self._manual_protocol(protocol, **kwargs)
 
 
     def set_expect_responses(self, value):
@@ -660,7 +659,7 @@ class ELM327(object):
         return ret
 
 
-    def set_pp(self, id, value, enable=None):
+    def _set_pp(self, id, value, enable=None):
         """
         Sets value of a programmable parameter and enables it if requested.
         """
@@ -695,9 +694,9 @@ class ELM327(object):
 
         # Go ahead and update parameter
         if default != None and default == value:
-            self.set_pp(param["id"], default, enable=False)
+            self._set_pp(param["id"], default, enable=False)
         else:
-            self.set_pp(param["id"], value, enable=True)
+            self._set_pp(param["id"], value, enable=True)
 
         return True
 
