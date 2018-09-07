@@ -249,8 +249,8 @@ class ELM327(object):
             res = self.send(b"ATI", delay=1, filtering=False)  # Wait 1 second for ELM to initialize
             # Return data can be junk, so don't bother checking
 
-            # First we need to determine if echo is on or off
-            res = self.send(b"", filtering=False)
+            # Determine if echo is on or off
+            res = self.send(b"ATI", filtering=False)
             self._echo_off = not self._has_message(res, "ATI")
 
             # Load current settings from programmable parameters
@@ -261,7 +261,10 @@ class ELM327(object):
             # Set echo on/off
             if self._ensure_pp(params[self.PP_ATE], "FF" if echo_off else "00", default="00"):
                 warm_reset = True
-            
+            # Echo has maybe been changed manually (using ATE0/1) - reset to load setting from PP
+            elif self._echo_off != echo_off:
+                warm_reset = True
+
             # Enable/disable printing of headers
             if self._ensure_pp(params[self.PP_ATH], "00" if print_headers else "FF", default="FF"):
                 warm_reset = True
