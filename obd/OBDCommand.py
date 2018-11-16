@@ -98,8 +98,7 @@ class OBDCommand():
         if messages:
             r.value = self.decode(messages)
         else:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(str(self) + " did not receive any acceptable messages")
+            logger.warning(str(self) + " did not receive any acceptable messages")
 
         return r
 
@@ -110,11 +109,13 @@ class OBDCommand():
             if len(message.data) > self.bytes:
                 # chop off the right side
                 message.data = message.data[:self.bytes]
-                logger.debug("Message was longer than expected. Trimmed message: " + repr(message.data))
+
+                logger.warning("Message was longer than expected - trimmed message: " + repr(message.data))
             elif len(message.data) < self.bytes:
                 # pad the right with zeros
                 message.data += (b'\x00' * (self.bytes - len(message.data)))
-                logger.debug("Message was shorter than expected. Padded message: " + repr(message.data))
+                
+                logger.warning("Message was shorter than expected - padded message: " + repr(message.data))
 
 
     def __str__(self):

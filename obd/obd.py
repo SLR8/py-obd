@@ -56,7 +56,7 @@ class OBD(object):
         self.__last_command = b"" # used for running the previous command with a CR
         self.__frame_counts = {} # keeps track of the number of return frames for each command
 
-        logger.debug("======================= python-OBD (v%s) =======================" % __version__)
+        logger.debug("======================= Python-OBD (v%s) =======================" % __version__)
         self.__connect(interface_cls, portstr, baudrate, protocol) # initialize by connecting and loading sensors
         self.__load_commands()            # try to load the car's supported commands
         logger.debug("===================================================================")
@@ -109,10 +109,10 @@ class OBD(object):
         """
 
         if self.status() != OBDStatus.CAR_CONNECTED:
-            logger.warning("Cannot load commands: No connection to car")
+            logger.warning("Cannot load commands - no connection to car")
             return
 
-        logger.info("querying for supported commands")
+        logger.info("Querying for supported commands")
         pid_getters = commands.pid_getters()
         for get in pid_getters:
             # PID listing commands should sequentialy become supported
@@ -160,36 +160,20 @@ class OBD(object):
 
     def status(self):
         """ returns the OBD connection status """
-        if self.interface is None:
-            return OBDStatus.NOT_CONNECTED
-        else:
-            return self.interface.status()
+        
+        return self.interface.status()
 
 
-    # not sure how useful this would be
+    def connection(self):
+        """ Returns the serial connection object """
 
-    # def ecus(self):
-    #     """ returns a list of ECUs in the vehicle """
-    #     if self.interface is None:
-    #         return []
-    #     else:
-    #         return self.interface.ecus()
+        return self.interface.connection()
 
 
-    def connection_info(self):
-        """ Returns info of the serial connection  """
-        if self.interface is None:
-            return {}
-        else:
-            return self.interface.connection_info()
+    def protocol(self):
+        """ Returns the active protocol object """
 
-
-    def protocol_info(self):
-        """ Returns the ID and name of the protocol being used by the interface """
-        if self.interface is None:
-            return {}
-        else:
-            return self.interface.protocol_info()
+        return self.interface.protocol()
 
 
     def supported_protocols(self):
@@ -204,7 +188,7 @@ class OBD(object):
         """ Change protocol for interface """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
-            raise Exception("Not connected")
+            raise Exception("Not connected to interface")
 
         ret = self.interface.set_protocol(protocol, baudrate=baudrate)
 
@@ -266,9 +250,8 @@ class OBD(object):
             Sends commands to the car, and protects against sending unsupported commands.
         """
 
-        if self.status() == OBDStatus.NOT_CONNECTED:
-            logger.warning("Query failed, no connection available")
-            return OBDResponse()
+        if self.status() != OBDStatus.CAR_CONNECTED:
+            raise Exception("No OBD connection to car")
 
         # if the user forces, skip all checks
         if not force and not self.test_cmd(cmd):
@@ -277,9 +260,9 @@ class OBD(object):
         # query command and retrieve message
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Querying command: %s" % str(cmd))
-            
+
         cmd_string = self.__build_command_string(cmd)
-        messages = self.interface.query(cmd_string, parse=True)
+        messages = self.interface.query(cmd_string)
 
         # if we're sending a new command, note it
         # first check that the current command WASN'T sent as an empty CR
@@ -293,7 +276,7 @@ class OBD(object):
             self.__frame_counts[cmd] = sum([len(m.frames) for m in messages])
 
         if not messages:
-            logger.warning("No valid OBD Messages returned")
+            logger.warning("No valid OBD messages returned")
             return OBDResponse()
 
         return cmd(messages) # compute a response object
@@ -304,8 +287,8 @@ class OBD(object):
             Low-level function that sends raw messages on bus.
         """
 
-        if self.status() == OBDStatus.NOT_CONNECTED:
-            raise Exception("Not connected")
+        if self.status() != OBDStatus.CAR_CONNECTED:
+            raise Exception("No OBD connection to car")
 
         # Set given header or use default
         self.interface.set_header(ELM327.OBD_HEADER if header == None else header)
@@ -329,12 +312,12 @@ class OBD(object):
             Low-level function that executes AT and ST commands.
         """
 
+        if self.status() == OBDStatus.NOT_CONNECTED:
+            raise Exception("Not connected to interface")
+
         cmd_string = cmd_string.upper()
         if not cmd_string[:2] in ["AT", "ST"]:
             raise ValueError("Only AT and ST commands supported")
-
-        if self.status() == OBDStatus.NOT_CONNECTED:
-            raise Exception("Not connected")
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Executing command: %s" % str(cmd_string))
@@ -350,7 +333,7 @@ class OBD(object):
         """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
-            raise Exception("Not connected")
+            raise Exception("Not connected to interface")
 
         if not mode or mode.lower() == "warm":
             self.interface.warm_reset()

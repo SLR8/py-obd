@@ -215,12 +215,6 @@ class STN11XX(ELM327):
     TRY_BAUDRATES = [9600, 2304000, 1152000, 576000, 230400, 115200, 57600, 38400, 19200]
 
 
-    def __init__(self, *args, **kwargs):
-        self._protocol_baudrate = None
-
-        super(STN11XX, self).__init__(*args, **kwargs)
-
-
     def set_baudrate(self, baudrate):
 
         # Set baudrate as usual if not already connected
@@ -235,7 +229,7 @@ class STN11XX(ELM327):
 
         # Tell STN1XX to switch to new baudrate
         self._write(b"STSBR" + str(baudrate).encode())
-        logger.info("Changed serial connection baudrate from '{:}' to '{:}'".format(self._port.baudrate, baudrate))
+        logger.info("Changed baudrate of serial connection from '{:}' to '{:}'".format(self._port.baudrate, baudrate))
 
         super(STN11XX, self).set_baudrate(baudrate)
 
@@ -248,21 +242,27 @@ class STN11XX(ELM327):
         return ret
 
 
-    def set_protocol(self, protocol, **kwargs):
+    def set_protocol(self, ident, **kwargs):
 
-        ret = super(STN11XX, self).set_protocol(protocol, **kwargs)
+        ret = super(STN11XX, self).set_protocol(ident, **kwargs)
 
         # Always determine current protocol baudrate
         res = self.send(b"STPBRR")
-        self._protocol_baudrate = next(iter(res), None)
+        self._protocol.baudrate = int(next(iter(res), "0"))
 
-        return ret
+        # Check if STN baudrate is lower than protocol baudrate
+        if self._protocol.baudrate > self._port.baudrate:
 
+            # Find first sufficient baudrate
+            for try_baudrate in sorted(self.TRY_BAUDRATES):
+                if try_baudrate >= self._protocol.baudrate:
 
-    def protocol_info(self):
-        ret = super(STN11XX, self).protocol_info()
-        if self._protocol_baudrate != None:
-            ret["baudrate"] = int(self._protocol_baudrate)
+                    # Use faster baudrate
+                    self.set_baudrate(try_baudrate)
+
+                    return ret
+
+            logger.warning("Serial connection baudrate '{:}' is lower than protocol baudrate '{:}'".format(self._port.baudrate, self._protocol.baudrate))
 
         return ret
 
@@ -308,31 +308,31 @@ class STN11XX(ELM327):
             self._port.timeout = timeout
 
 
-    def _manual_protocol(self, protocol, baudrate=None):
+    def _manual_protocol(self, ident, baudrate=None):
 
         # Call super method if not a STN protocol
-        if not protocol in self.STN_SUPPORTED_PROTOCOLS:
+        if not ident in self.STN_SUPPORTED_PROTOCOLS:
             if baudrate != None:
                 raise ValueError("Defining of custom baudrate is not supported for ELM327 protocols")
 
-            return super(STN11XX, self)._manual_protocol(protocol)
+            return super(STN11XX, self)._manual_protocol(ident)
 
         # Change protocol
-        res = self.send(b"STP" + protocol.encode())
+        res = self.send(b"STP" + ident.encode())
         if not self._is_ok(res):
-            raise Exception("Invalid response when manually changing to protocol '{:}': {:}".format(protocol, res))
+            raise Exception("Invalid response when manually changing to protocol '{:}': {:}".format(ident, res))
 
         # Verify protocol changed
         res = self.send(b"STPR")
-        if not self._has_message(res, protocol):
-            raise Exception("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(protocol, res))
+        if not self._has_message(res, ident):
+            raise Exception("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(ident, res))
 
         # Also set protocol baudrate if specified
         if baudrate != None:
             res = self.send(b"STPBR" + str(baudrate).encode())
             if not self._is_ok(res,):
-                raise Exception("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, protocol, res))
+                raise Exception("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, ident, res))
 
         # Initialize protocol parser
-        self._protocol = self.supported_protocols()[protocol]([])
-        logger.info("Protocol '{:}' set manually: {:}".format(protocol, self._protocol))
+        return self.supported_protocols()[ident]([])
+

@@ -23,23 +23,11 @@ class FakeELM:
         self._status = OBDStatus.CAR_CONNECTED
         self._last_command = None
 
-    def connection_info(self):
-        return {
-            "port": self._portname,
-            "baudrate": 9600
-        }
-
     def status(self):
         return self._status
 
     def ecus(self):
         return [ ECU.ENGINE, ECU.UNKNOWN ]
-
-    def protocol_info(self):
-        return {
-            "id": "6",
-            "name": "ISO 15765-4 (CAN 11/500)"
-        }
 
     def close(self):
         pass

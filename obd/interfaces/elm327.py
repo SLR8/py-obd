@@ -113,12 +113,36 @@ class SAE_J1939(CANProtocol):
 # Interface implementation
 ########################################################################
 
+
+class ELM327Error(Exception):
+
+    def __init__(self, *args, **kwargs):
+        self.code = kwargs.pop("code", None)
+        super(Exception, self).__init__(*args, **kwargs)
+
+
 class ELM327(object):
     """
     Handles communication with the ELM327 adapter.
     """
 
-    ELM_PROMPT = b'\r>'
+    PROMPT = b"\r>"
+    OK = b"OK"
+    ERRORS = {
+        "?":                  "Unsupported command",
+        "BUS BUSY":           "Too much activity on bus",
+        "BUS ERROR":          "Invalid signal detected on bus",
+        "CAN ERROR":          "CAN sending or receiving failed",
+        "DATA ERROR":         "Incorrect response from vehicle",
+        "FB ERROR":           "Problem with feedback signal",
+        "UNABLE TO CONNECT":  "Unable to connect because no supported protocol found",
+        "NO DATA":            "No response from vehicle within timeout",
+        "BUFFER FULL":        "Internal RS232 transmit buffer is full",
+        "ACT ALERT":          "No RS232 or OBD activity for some time",
+        "LV RESET":           "Low voltage reset",
+        "LP ALERT":           "Low power (standby) mode in 2 seconds",
+        "STOPPED":            "Operation interrupted by a received RS232 character",
+    }
 
     SUPPORTED_PROTOCOLS = {
         #"0" : None, # Automatic Mode. This isn't an actual protocol. If the
@@ -289,12 +313,9 @@ class ELM327(object):
         # Try to communicate with the car, and load the correct protocol parser
         try:
             self.set_protocol(protocol)
-        except:
-            logger.exception("Unable to set protocol")
+        except ELM327Error:
+            logger.exception("Unable to set protocol '{:}'".format(protocol))
             return
-            
-        # We're now sucessfully connected to the car
-        self._status = OBDStatus.CAR_CONNECTED
 
         logger.info("Connected successfully to car: Port={:}, Baudrate={:}, Protocol={:}".format(
             self._port.port,
@@ -345,11 +366,8 @@ class ELM327(object):
         self.reopen()
 
 
-    def connection_info(self):
-        return {
-            "port": self._port.portstr,
-            "baudrate": self._port.baudrate
-        } if self._port else {}
+    def connection(self):
+        return self._port
 
 
     def status(self):
@@ -360,19 +378,12 @@ class ELM327(object):
         return self._protocol
 
 
-    def protocol_info(self):
-        return {
-            "id": self._protocol.ID,
-            "name": self._protocol.NAME
-        } if self._protocol else {}
-
-
     def ecus(self):
         return self._protocol.ecu_map.values() if self._protocol else []
 
 
     def set_baudrate(self, baudrate):
-        if baudrate is None:
+        if baudrate == None:
             
             # When connecting to pseudo terminal, don't bother with auto baud
             if self._port.portstr.startswith("/dev/pts"):
@@ -401,20 +412,39 @@ class ELM327(object):
         return self._SUPPORTED_PROTOCOLS
 
 
-    def set_protocol(self, protocol, **kwargs):
-        if protocol is None:
+    def set_protocol(self, ident, **kwargs):
+
+        # Validate protocol if given
+        if ident != None and ident not in self.supported_protocols():
+            raise ELM327Error("Unsupported protocol '{:}'".format(ident))
+
+        try:
 
             # Autodetect protocol
-            self._auto_protocol()
+            if ident == None:
+                self._protocol = self._auto_protocol()
+                self._protocol.autodetected = True
 
-        else:
-
-            # Validate specified protocol 
-            if protocol not in self.supported_protocols():
-                raise Exception("Unsupported protocol '{:}'".format(protocol))
+                logger.info("Protocol '{:}' set automatically: {:}".format(self._protocol.ID, self._protocol))
 
             # Set explicit protocol
-            self._manual_protocol(protocol, **kwargs)
+            else:
+                self._protocol = self._manual_protocol(ident, **kwargs)
+                self._protocol.autodetected = False
+
+                logger.info("Protocol '{:}' set manually: {:}".format(self._protocol.ID, self._protocol))
+
+            # Update overall status
+            self._status = OBDStatus.CAR_CONNECTED
+
+        except:
+            self._protocol = UnknownProtocol([])
+
+            # Update overall status
+            if self._status == OBDStatus.CAR_CONNECTED:
+                self._status = OBDStatus.ELM_CONNECTED
+
+            raise
 
 
     def set_expect_responses(self, value):
@@ -427,7 +457,7 @@ class ELM327(object):
 
         res = self.send(b"ATR" + str(int(value)).encode())
         if not self._is_ok(res):
-            raise Exception("Invalid response when setting responses '{:}': {:}".format(value, res))
+            raise ELM327Error("Invalid response when setting responses '{:}': {:}".format(value, res))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Changed responses from '{:}' to '{:}'".format(self._expect_responses, value))
@@ -445,7 +475,7 @@ class ELM327(object):
 
         res = self.send(b"ATSH" + value.encode())
         if not self._is_ok(res):
-            raise Exception("Invalid response when setting header '{:}': {:}".format(value, res))
+            raise ELM327Error("Invalid response when setting header '{:}': {:}".format(value, res))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Changed header from '{:}' to '{:}'".format(self._header, value))
@@ -463,7 +493,7 @@ class ELM327(object):
 
         res = self.send(b"ATCAF" + str(int(value)).encode())
         if not self._is_ok(res):
-            raise Exception("Invalid response when setting CAN automatic formatting '{:}': {:}".format(value, res))
+            raise ELM327Error("Invalid response when setting CAN automatic formatting '{:}': {:}".format(value, res))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Changed CAN automatic formatting from '{:}' to '{:}'".format(self._can_auto_format, value))
@@ -472,7 +502,7 @@ class ELM327(object):
 
 
     @Decorators.ensure_obd_mode
-    def query(self, cmd, parse=False):
+    def query(self, cmd, parse=True):
         """
         Used to service all OBDCommands.
 
@@ -520,7 +550,7 @@ class ELM327(object):
         if not self._echo_off and len(lines) > 0:
 
             # Sanity check if echo matches sent command
-            if not self._has_message(lines, "NO DATA") and cmd != lines[0]:
+            if cmd != lines[0]:
                 logger.warning("Sent command does not match echo: '{:}' != '{:}'".format(cmd, lines[0]))
             else:
                 lines = lines[1:]
@@ -557,89 +587,97 @@ class ELM327(object):
                     logger.debug("Response from baudrate choice '%d': %s" % (baudrate, repr(res)))
 
                 # Watch for the prompt character
-                if res.endswith(self.ELM_PROMPT):
+                if res.endswith(self.PROMPT):
                     logger.info("Choosing baudrate '%d'" % baudrate)
 
                     return
 
-            raise Exception("Unable to automatically find baudrate from given choices")
+            raise ELM327Error("Unable to automatically find baudrate from given choices")
         finally:
             self._port.timeout = timeout  # Reinstate our original timeout
 
 
-    def _manual_protocol(self, protocol):
+    def _verify_protocol(self, ident, force=False):
+        ret = []
+
+        ignore_lines = ["SEARCHING...", "NO DATA"]
+        for line in self.query(b"0100", parse=False):
+
+            # Skip ignore lines
+            if line in ignore_lines:
+                continue
+
+            # Check if valid hex
+            try:
+                int(line.replace(" ", ""), 16)
+            except ValueError:
+                err = self.ERRORS.get(line, "Invalid non-hex response: {:}".format(line))
+
+                msg = "Unable to verify connectivity of protocol '{:}': {:}".format(ident, err)
+                if force:
+                    logger.warning(msg)
+
+                    return []
+                else:
+                    raise ELM327Error(msg)
+
+            ret.append(line)
+
+        if not ret:
+            logger.warning("No data received when trying to verify connectivity of protocol '{:}'".format(ident))
+
+        return ret
+
+
+    def _manual_protocol(self, ident, verify=True):
 
         # Change protocol
-        res = self.send(b"ATTP" + protocol.encode())
+        res = self.send(b"ATTP" + ident.encode())
         if not self._is_ok(res):
-            raise Exception("Invalid response when manually changing to protocol '{:}': {:}".format(protocol, res))
+            raise ELM327Error("Invalid response when manually changing to protocol '{:}': {:}".format(ident, res))
 
         # Verify protocol connectivity
-        r0100 = self.query(b"0100")
-        if self._has_message(r0100, "UNABLE TO CONNECT", "CAN ERROR"):
-            self._protocol = self.supported_protocols()[protocol]([])
-            raise Exception("Unable to verify connectivity of protocol '{:}': {:}".format(protocol, r0100))
+        res_0100 = self._verify_protocol(ident, force=not verify)
 
         # Verify protocol changed
         res = self.send(b"ATDPN")
-        if not self._has_message(res, protocol):
-            raise Exception("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(protocol, res))
+        if not self._has_message(res, ident):
+            raise ELM327Error("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(ident, res))
 
         # Initialize protocol parser
-        self._protocol = self.supported_protocols()[protocol](r0100)
-        logger.info("Protocol '{:}' set manually: {:}".format(protocol, self._protocol))
+        return self.supported_protocols()[ident](res_0100)
 
 
-    def _auto_protocol(self):
+    def _auto_protocol(self, verify=True):
         """
         Attempts communication with the car.
         Upon success, the appropriate protocol parser is loaded.
         """
 
-        # Try the ELM's auto protocol mode
+        # Set auto protocol mode
         res = self.send(b"ATSP0")
+        if not self._is_ok(res):
+            raise ELM327Error("Invalid response when setting auto protocol mode: {:}".format(res))
 
-        # First command search protocols
-        r0100 = self.query(b"0100")
+        # Search for protocol and verify connectivity
+        res_0100 = self._verify_protocol("auto", force=not verify)
 
         # Get protocol number
         res = self.send(b"ATDPN")
         if len(res) != 1:
             logger.error("Invalid response when getting protocol number: {:}".format(res))
-            raise Exception("Failed to retrieve current protocol")
+            raise ELM327Error("Failed to retrieve current protocol after searching for protocol automatically")
 
-        pro = res[0]  # Grab the first (and only) line returned
+        ident = res[0]  # Grab the first (and only) line returned
         # Suppress any "automatic" prefix
-        pro = pro[1:] if (len(pro) > 1 and pro.startswith("A")) else pro
+        ident = ident[1:] if (len(ident) > 1 and ident.startswith("A")) else ident
 
         # Check if the protocol is supported
-        if pro in self.supported_protocols():
+        if not ident in self.supported_protocols():
+            raise ELM327Error("Automatically detected protocol '{:}' is not supported".format(ident))
 
-            # Jackpot, instantiate the corresponding protocol handler
-            self._protocol = self.supported_protocols()[pro](r0100)
-            logger.info("Protocol '{:}' set automatically: {:}".format(pro, self._protocol))
-
-            return
-
-        # Unknown protocol is likely because not all adapter/car combinations work
-        # in "auto" mode. Some respond to ATDPN responded with "0".
-        logger.info("ELM responded with an unknown/unsupported protocol: {:}".format(pro))
-
-        # Trying them one-by-one
-        for pro in self.TRY_PROTOCOL_ORDER:
-            res = self.send(b"ATTP" + pro.encode())
-
-            r0100 = self.query(b"0100")
-            if not self._has_message(r0100, "UNABLE TO CONNECT", "CAN ERROR"):
-
-                # Success, found a valid protocol
-                self._protocol = self.supported_protocols()[pro](r0100)
-                logger.info("Protocol '{:}' set automatically using try list: {:}".format(pro, self._protocol))
-
-                return
-
-        # If we've come this far, then we have failed
-        raise Exception("Unable to determine protocol automatically")
+        # Instantiate the corresponding protocol parser
+        return self.supported_protocols()[ident](res_0100)
 
 
     def _get_pps(self):
@@ -657,7 +695,7 @@ class ELM327(object):
                     group = match.groupdict()
                     ret[group["id"]] = group
                 else:
-                    raise Exception("Unable to parse programmable parameter: {:}".format(param))
+                    raise ELM327Error("Unable to parse programmable parameter: {:}".format(param))
 
         return ret
 
@@ -671,14 +709,14 @@ class ELM327(object):
         if self._is_ok(res):
             logger.info("Updated programmable parameter '{:}' value '{:}'".format(id, value))
         else:
-            raise Exception("Failed to set programmable parameter '{:}' value '{:}': {:}".format(id, value, res))
+            raise ELM327Error("Failed to set programmable parameter '{:}' value '{:}': {:}".format(id, value, res))
 
         if enable is not None:
             res = self.send(b"ATPP{:s} {:s}".format(id, "ON" if enable else "OFF"))
             if self._is_ok(res):
                 logger.info("{:} programmable parameter '{:}'".format("Enabled" if enable else "Disabled", id))
             else:
-                raise Exception("Failed to {:} programmable parameter '{:}': {:}".format("enable" if enable else "disable", id, res))
+                raise ELM327Error("Failed to {:} programmable parameter '{:}': {:}".format("enable" if enable else "disable", id, res))
 
 
     def _ensure_pp(self, param, value, default=None):
@@ -710,7 +748,7 @@ class ELM327(object):
         """
 
         if not self._port or not self._port.is_open:
-            raise Exception("Cannot write when serial connection is not open")
+            raise ELM327Error("Cannot write when serial connection is not open")
 
         cmd += b"\r\n"  # Terminate
         
@@ -731,7 +769,7 @@ class ELM327(object):
         """
 
         if not self._port or not self._port.is_open:
-            raise Exception("Cannot read when serial connection is not open")
+            raise ELM327Error("Cannot read when serial connection is not open")
 
         buffer = bytearray()
         start = timer()
@@ -752,7 +790,7 @@ class ELM327(object):
             buffer.extend(data)
 
             # End on chevron + carriage return (ELM prompt characters)
-            if buffer.endswith(self.ELM_PROMPT):
+            if buffer.endswith(self.PROMPT):
                 break
 
             # Check if it is time to send an interrupt character
@@ -770,8 +808,8 @@ class ELM327(object):
         buffer = re.sub(b"\x00", b"", buffer)
 
         # Remove the prompt characters
-        if buffer.endswith(self.ELM_PROMPT):
-            buffer = buffer[:-len(self.ELM_PROMPT)]
+        if buffer.endswith(self.PROMPT):
+            buffer = buffer[:-len(self.PROMPT)]
 
         # Convert bytes into a standard string
         string = buffer.decode()
@@ -787,16 +825,16 @@ class ELM327(object):
             return False
 
         if not self._echo_off or expect_echo:
-            return self._has_message(lines, "OK")
+            return self._has_message(lines, self.OK) == self.OK
 
-        return len(lines) == 1 and lines[0] == "OK"
+        return len(lines) == 1 and lines[0] == self.OK
 
 
     def _has_message(self, lines, *args):
         for line in lines:
             for arg in args:
                 if arg in line:
-                    return True
+                    return arg
 
-        return False
+        return None
 

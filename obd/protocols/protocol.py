@@ -123,8 +123,8 @@ class Protocol(object):
 
     # override in subclass for each protocol
 
-    NAME = "" # the ELM's name for this protocol (ie, "SAE J1939 (CAN 29/250)")
-    ID = ""   # the ELM's ID for this protocol (ie, "A")
+    NAME = None # the ELM's name for this protocol (ie, "SAE J1939 (CAN 29/250)")
+    ID = None   # the ELM's ID for this protocol (ie, "A")
 
     # the TX_IDs of known ECUs
     TX_ID_ENGINE = None
@@ -156,6 +156,8 @@ class Protocol(object):
             names = [k for k in ECU.__dict__ if ECU.__dict__[k] == ecu ]
             names = ", ".join(names)
             logger.debug("map ECU %d --> %s" % (tx_id, names))
+
+        self.autodetected = None
 
 
     def __call__(self, lines):

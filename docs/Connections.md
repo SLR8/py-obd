@@ -85,7 +85,7 @@ connection.status() == OBDStatus.CAR_CONNECTED
 
 ---
 
-### connection_info()
+### connection()
 
 Returns the string name for the currently connected port (`"/dev/ttyUSB0"`) and currently used baudrate. If no connection was made, this function returns an empty dictionary.
 
@@ -97,7 +97,7 @@ Returns a boolean for whether a command is supported by both the car and python-
 
 ---
 
-### protocol_info()
+### protocol()
 
 Return string name and ID for the protocol currently being used by the adapter. Protocol *ID's* are the short values used by your adapter, whereas protocol *names* are the human-readable versions. The `id` field is a good way to find which value to pass in the `protocol` field of the OBD constructor (though, this is mainly for advanced usage). These functions do not make any serial requests. When no connection has been made, these functions will return empty strings. The possible values are:
 
