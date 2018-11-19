@@ -1,3 +1,4 @@
+import collections
 import logging
 
 from .elm327 import ELM327
@@ -172,7 +173,7 @@ class STN11XX(ELM327):
         See: https://www.scantool.net/scantool/downloads/234/stn1100-frpm-preliminary.pdf
     """
 
-    STN_SUPPORTED_PROTOCOLS = {
+    STN_SUPPORTED_PROTOCOLS = collections.OrderedDict({
 
         # J1850
         J1850_PWM.ID:                 J1850_PWM,                 # J1850 PWM
@@ -207,7 +208,7 @@ class STN11XX(ELM327):
         SWC_ISO_11898_29bit_33k3.ID:  SWC_ISO_11898_29bit_33k3,   # SW CAN (ISO 11898, 29bit, 33.3kbps, var DLC)
         SWC_ISO_15765_11bit_33k3.ID:  SWC_ISO_15765_11bit_33k3,   # SW CAN (ISO 15765, 11bit, 33.3kbps, DLC=8)
         SWC_ISO_15765_29bit_33k3.ID:  SWC_ISO_15765_29bit_33k3,   # SW CAN (ISO 15765, 29bit, 33.3kbps, DLC=8)
-    }
+    })
 
     # We check the the default baud rate first, then go fastest to
     # slowest, on the theory that anyone who's using a slow baud rate is
@@ -235,7 +236,7 @@ class STN11XX(ELM327):
 
 
     def supported_protocols(self):
-        ret = {}
+        ret = collections.OrderedDict()
         ret.update(self.SUPPORTED_PROTOCOLS)
         ret.update(self.STN_SUPPORTED_PROTOCOLS)
 

@@ -31,6 +31,7 @@
 #                                                                      #
 ########################################################################
 
+import collections
 import logging
 import re
 import serial
@@ -144,7 +145,7 @@ class ELM327(object):
         "STOPPED":            "Operation interrupted by a received RS232 character",
     }
 
-    SUPPORTED_PROTOCOLS = {
+    SUPPORTED_PROTOCOLS = collections.OrderedDict({
         #"0" : None, # Automatic Mode. This isn't an actual protocol. If the
                      # ELM reports this, then we don't have enough
                      # information. see auto_protocol()
@@ -160,7 +161,7 @@ class ELM327(object):
         "A" : SAE_J1939,
         #"B" : None, # user defined 1
         #"C" : None, # user defined 2
-    }
+    })
 
     # Used as a fallback, when ATSP0 doesn't cut it
     TRY_PROTOCOL_ORDER = [

@@ -178,10 +178,8 @@ class OBD(object):
 
     def supported_protocols(self):
         """ Returns all protocols supported by the interface """
-        if self.interface is None:
-            return {}
-        else:
-            return self.interface.supported_protocols()
+        
+        return self.interface.supported_protocols()
 
 
     def change_protocol(self, protocol, baudrate=None, reload_commands=True):
