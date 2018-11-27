@@ -260,13 +260,17 @@ class OBD(object):
             logger.debug("Querying command: %s" % str(cmd))
 
         cmd_string = self.__build_command_string(cmd)
-        messages = self.interface.query(cmd_string)
 
-        # if we're sending a new command, note it
-        # first check that the current command WASN'T sent as an empty CR
-        # (CR is added by the ELM327 class)
-        if cmd_string:
-            self.__last_command = cmd_string
+        try:
+            messages = self.interface.query(cmd_string)
+
+        finally:
+
+            # if we're sending a new command, note it
+            # first check that the current command WASN'T sent as an empty CR
+            # (CR is added by the ELM327 class)
+            if cmd_string:
+                self.__last_command = cmd_string
 
         # if we don't already know how many frames this command returns,
         # log it, so we can specify it next time
@@ -300,7 +304,13 @@ class OBD(object):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Sending message: %s" % str(msg_string))
 
-        lines = self.interface.send(msg_string)
+        try:
+            lines = self.interface.send(msg_string)
+
+        finally:
+
+            # Remember to update last command
+            self.__last_command = msg_string
 
         return lines
 
@@ -320,7 +330,13 @@ class OBD(object):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Executing command: %s" % str(cmd_string))
 
-        lines = self.interface.send(cmd_string)
+        try:
+            lines = self.interface.send(cmd_string)
+
+        finally:
+
+            # Remember to update last command
+            self.__last_command = cmd_string
 
         return lines
 
@@ -332,6 +348,10 @@ class OBD(object):
 
         if self.status() == OBDStatus.NOT_CONNECTED:
             raise Exception("Not connected to interface")
+
+        # Remember to clear
+        self.__last_command = ""
+        self.__frame_counts = {}
 
         if not mode or mode.lower() == "warm":
             self.interface.warm_reset()

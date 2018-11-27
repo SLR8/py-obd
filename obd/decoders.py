@@ -239,7 +239,7 @@ def elm_voltage(messages):
         v = v.split("V")[0]
         return float(v) * Unit.volt
     except ValueError:
-        logger.warning("Failed to parse ELM voltage")
+        logger.warning("Failed to parse ELM voltage {:}".format(repr(v)))
         return None
 
 
