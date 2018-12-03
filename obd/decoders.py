@@ -300,14 +300,20 @@ def fuel_status(messages):
     status_2 = ""
 
     if bits[0:8].count(True) == 1:
-        status_1 = FUEL_STATUS[ 7 - bits[0:8].index(True) ]
+        if 7 - bits[0:8].index(True) < len(FUEL_STATUS):
+             status_1 = FUEL_STATUS[ 7 - bits[0:8].index(True) ]
+         else:
+             logger.warning("Invalid response for fuel status (high bits set)")
     else:
-        logger.debug("Invalid response for fuel status (multiple/no bits set)")
+        logger.warning("Invalid response for fuel status (multiple/no bits set)")
 
     if bits[8:16].count(True) == 1:
-        status_2 = FUEL_STATUS[ 7 - bits[8:16].index(True) ]
+        if 7 - bits[8:16].index(True) < len(FUEL_STATUS):
+             status_2 = FUEL_STATUS[ 7 - bits[8:16].index(True) ]
+         else:
+             logger.warning("Invalid response for fuel status (high bits set)")
     else:
-        logger.debug("Invalid response for fuel status (multiple/no bits set)")
+        logger.warning("Invalid response for fuel status (multiple/no bits set)")
 
     if not status_1 and not status_2:
         return None
@@ -323,7 +329,7 @@ def air_status(messages):
     if bits.num_set() == 1:
         status = AIR_STATUS[ 7 - bits[0:8].index(True) ]
     else:
-        logger.debug("Invalid response for fuel status (multiple/no bits set)")
+        logger.warning("Invalid response for fuel status (multiple/no bits set)")
 
     return status
 
@@ -337,7 +343,7 @@ def obd_compliance(messages):
     if i < len(OBD_COMPLIANCE):
         v = OBD_COMPLIANCE[i]
     else:
-        logger.debug("Invalid response for OBD compliance (no table entry)")
+        logger.warning("Invalid response for OBD compliance (no table entry)")
 
     return v
 
@@ -351,7 +357,7 @@ def fuel_type(messages):
     if i < len(FUEL_TYPES):
         v = FUEL_TYPES[i]
     else:
-        logger.debug("Invalid response for fuel type (no table entry)")
+        logger.warning("Invalid response for fuel type (no table entry)")
 
     return v
 
@@ -413,7 +419,7 @@ def parse_monitor_test(d, mon):
         test.name = TEST_IDS[tid][0] # lookup the name from the table
         test.desc = TEST_IDS[tid][1] # lookup the description from the table
     else:
-        logger.debug("Encountered unknown Test ID")
+        logger.warning("Encountered unknown Test ID")
         test.name = "Unknown"
         test.desc = "Unknown"
 
@@ -421,7 +427,7 @@ def parse_monitor_test(d, mon):
 
     # if we can't decode the value, abort
     if uas is None:
-        logger.debug("Encountered unknown Units and Scaling ID")
+        logger.warning("Encountered unknown Units and Scaling ID")
         return None
 
     # load the test results
@@ -444,7 +450,7 @@ def monitor(messages):
     extra_bytes = len(d) % 9
 
     if extra_bytes != 0:
-        logger.debug("Encountered monitor message with non-multiple of 9 bytes. Truncating...")
+        logger.warning("Encountered monitor message with non-multiple of 9 bytes. Truncating...")
         d = d[:len(d) - extra_bytes]
 
     # look at data in blocks of 9 bytes (one test result)
