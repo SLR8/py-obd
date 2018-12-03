@@ -601,7 +601,7 @@ class ELM327(object):
                 # The first character might get eaten if the interface was busy,
                 # so write a second one (again so that the lone CR doesn't repeat
                 # the previous command)
-                self._port.write(b"\x7F\x7F\r\n")
+                self._port.write(b"\x7F\x7F\r")
                 self._port.flush()
 
                 res = self._port.read(1024)
@@ -781,7 +781,7 @@ class ELM327(object):
         if not self._port or not self._port.is_open:
             raise ELM327Error("Cannot write when serial connection is not open")
 
-        cmd += b"\r\n"  # Terminate
+        cmd += b"\r"  # Terminate with carriage return in accordance with ELM327 and STN11XX specifications
         
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Write: " + repr(cmd))
