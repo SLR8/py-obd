@@ -62,16 +62,16 @@ Returns a string value reflecting the status of the connection. These values sho
 from obd import OBDStatus
 
 # no connection is made
-OBDStatus.NOT_CONNECTED # "Not Connected"
+OBDStatus.NOT_CONNECTED # "not_connected"
 
 # successful communication with the ELM327 adapter
-OBDStatus.ELM_CONNECTED # "ELM Connected"
+OBDStatus.ITF_CONNECTED # "interface_connected"
 
 # successful communication with the ELM327 and the vehicle
-OBDStatus.CAR_CONNECTED # "Car Connected"
+OBDStatus.BUS_CONNECTED # "bus_connected"
 ```
 
-The middle state, `ELM_CONNECTED` is mostly for diagnosing errors. When a proper connection is established, you will never encounter this value.
+The middle state, `ITF_CONNECTED` is mostly for diagnosing errors. When a proper connection is established, you will never encounter this value.
 
 ---
 
@@ -80,7 +80,7 @@ The middle state, `ELM_CONNECTED` is mostly for diagnosing errors. When a proper
 Returns a boolean for whether a connection was established with the vehicle. It is identical to writing:
 
 ```python
-connection.status() == OBDStatus.CAR_CONNECTED
+connection.status() == OBDStatus.BUS_CONNECTED
 ```
 
 ---

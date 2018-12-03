@@ -49,7 +49,7 @@ class OBD(object):
         with it's assorted commands/sensors.
     """
 
-    def __init__(self, portstr=None, baudrate=None, protocol=None, fast=True, interface_cls=ELM327):
+    def __init__(self, portstr=None, baudrate=None, protocol=None, fast=True, interface_cls=ELM327, status_callback=None):
         self.interface = None
         self.supported_commands = set(commands.base_commands())
         self.fast = fast # global switch for disabling optimizations
@@ -57,12 +57,12 @@ class OBD(object):
         self.__frame_counts = {} # keeps track of the number of return frames for each command
 
         logger.debug("======================= Python-OBD (v%s) =======================" % __version__)
-        self.__connect(interface_cls, portstr, baudrate, protocol) # initialize by connecting and loading sensors
+        self.__connect(interface_cls, portstr, baudrate, protocol, status_callback=status_callback) # initialize by connecting and loading sensors
         self.__load_commands()            # try to load the car's supported commands
         logger.debug("===================================================================")
 
 
-    def __connect(self, interface_cls, portstr, baudrate, protocol):
+    def __connect(self, interface_cls, portstr, baudrate, protocol, status_callback=None):
         """
             Attempts to instantiate and open an ELM327 interface connection object.
         """
@@ -80,10 +80,10 @@ class OBD(object):
             for port in portnames:
                 logger.info("Attempting to use port '{:}' ".format(port))
 
-                self.interface = interface_cls(port)
+                self.interface = interface_cls(port, status_callback=status_callback)
                 try:
                     self.interface.open(baudrate, protocol)
-                    if self.interface.status() >= OBDStatus.ELM_CONNECTED:
+                    if self.interface.status() >= OBDStatus.ITF_CONNECTED:
                         break # success! stop searching for serial
 
                 except:
@@ -92,7 +92,7 @@ class OBD(object):
         else:
             logger.debug("Explicit port defined")
 
-            self.interface = interface_cls(portstr)
+            self.interface = interface_cls(portstr, status_callback=status_callback)
             try:
                 self.interface.open(baudrate, protocol)
             except:
@@ -108,8 +108,8 @@ class OBD(object):
             and compiles a list of command objects.
         """
 
-        if self.status() != OBDStatus.CAR_CONNECTED:
-            logger.warning("Cannot load commands - no connection to car")
+        if self.status() != OBDStatus.BUS_CONNECTED:
+            logger.warning("Cannot load commands - no connection to bus")
             return
 
         logger.info("Querying for supported commands")
@@ -198,12 +198,9 @@ class OBD(object):
 
     def is_connected(self):
         """
-            Returns a boolean for whether a connection with the car was made.
-
-            Note: this function returns False when:
-            obd.status = OBDStatus.ELM_CONNECTED
+            Returns a boolean for whether a connection with the car's bus was made.
         """
-        return self.status() == OBDStatus.CAR_CONNECTED
+        return self.status() == OBDStatus.BUS_CONNECTED
 
 
     def print_commands(self):
@@ -248,8 +245,8 @@ class OBD(object):
             Sends commands to the car, and protects against sending unsupported commands.
         """
 
-        if self.status() != OBDStatus.CAR_CONNECTED:
-            raise Exception("No OBD connection to car")
+        if self.status() != OBDStatus.BUS_CONNECTED:
+            raise Exception("No OBD connection to vehicle")
 
         # if the user forces, skip all checks
         if not force and not self.test_cmd(cmd):
@@ -289,8 +286,8 @@ class OBD(object):
             Low-level function that sends raw messages on bus.
         """
 
-        if self.status() != OBDStatus.CAR_CONNECTED:
-            raise Exception("No OBD connection to car")
+        if self.status() != OBDStatus.BUS_CONNECTED:
+            raise Exception("No OBD connection to vehicle")
 
         # Set given header or use default
         self.interface.set_header(ELM327.OBD_HEADER if header == None else header)

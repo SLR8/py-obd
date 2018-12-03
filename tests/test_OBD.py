@@ -20,7 +20,7 @@ class FakeELM:
 
     def __init__(self, portname, UNUSED_baudrate=None, UNUSED_protocol=None):
         self._portname = portname
-        self._status = OBDStatus.CAR_CONNECTED
+        self._status = OBDStatus.BUS_CONNECTED
         self._last_command = None
 
     def status(self):
@@ -86,11 +86,11 @@ def test_status():
     # the other values
     o.interface = FakeELM("/dev/null")
 
-    o.interface._status = OBDStatus.ELM_CONNECTED
-    assert o.status() == OBDStatus.ELM_CONNECTED
+    o.interface._status = OBDStatus.ITF_CONNECTED
+    assert o.status() == OBDStatus.ITF_CONNECTED
 
-    o.interface._status = OBDStatus.CAR_CONNECTED
-    assert o.status() == OBDStatus.CAR_CONNECTED
+    o.interface._status = OBDStatus.BUS_CONNECTED
+    assert o.status() == OBDStatus.BUS_CONNECTED
 
 
 def test_supports():

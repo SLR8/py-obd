@@ -40,15 +40,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-
 class OBDStatus:
     """ Values for the connection status flags """
 
-    NOT_CONNECTED = "Not Connected"
-    ELM_CONNECTED = "ELM Connected"
-    CAR_CONNECTED = "Car Connected"
-
-
+    NOT_CONNECTED = "not_connected"
+    ITF_CONNECTED = "interface_connected"
+    BUS_CONNECTED = "bus_connected"
 
 
 class bitarray:

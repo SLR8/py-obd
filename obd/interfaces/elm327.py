@@ -218,12 +218,13 @@ class ELM327(object):
             return decorator
 
 
-    def __init__(self, port, timeout=10):
+    def __init__(self, port, timeout=10, status_callback=None):
         """
         Initializes interface instance.
         """
 
         self._status              = OBDStatus.NOT_CONNECTED
+        self._status_callback     = status_callback
         self._protocol            = UnknownProtocol([])
 
         # Default values for settings
@@ -257,6 +258,10 @@ class ELM327(object):
             self._port.open()
         except:
             logger.exception("Failed to open serial connection")
+
+            # Remember to report back status
+            self._trigger_status_callback()
+
             raise
 
         # Set the ELM's baudrate
@@ -264,7 +269,9 @@ class ELM327(object):
             self.set_baudrate(baudrate)
         except:
             logger.exception("Failed to set baudrate of serial connection")
+
             self.close()
+
             raise
 
         # Configure ELM settings
@@ -305,20 +312,26 @@ class ELM327(object):
 
         except:
             logger.exception("Failed to configure ELM settings")
+
             self.close()
+
             raise
 
         # By now, we've successfuly communicated with the ELM, but not the car
-        self._status = OBDStatus.ELM_CONNECTED
+        self._status = OBDStatus.ITF_CONNECTED
+
+        # Remember to report back status
+        self._trigger_status_callback()
 
         # Try to communicate with the car, and load the correct protocol parser
         try:
             self.set_protocol(protocol)
         except ELM327Error:
             logger.exception("Unable to set protocol '{:}'".format(protocol))
+
             return
 
-        logger.info("Connected successfully to car: Port={:}, Baudrate={:}, Protocol={:}".format(
+        logger.info("Connected successfully to vehicle: Port={:}, Baudrate={:}, Protocol={:}".format(
             self._port.port,
             self._port.baudrate,
             self._protocol.ID,
@@ -336,6 +349,9 @@ class ELM327(object):
             logger.info("Closing serial connection")
 
             self._port.close()
+
+        # Report status changed
+        self._trigger_status_callback()
 
 
     def reopen(self):
@@ -436,14 +452,20 @@ class ELM327(object):
                 logger.info("Protocol '{:}' set manually: {:}".format(self._protocol.ID, self._protocol))
 
             # Update overall status
-            self._status = OBDStatus.CAR_CONNECTED
+            self._status = OBDStatus.BUS_CONNECTED
+
+            # Report status changed
+            self._trigger_status_callback(protocol=self._protocol)
 
         except:
             self._protocol = UnknownProtocol([])
 
             # Update overall status
-            if self._status == OBDStatus.CAR_CONNECTED:
-                self._status = OBDStatus.ELM_CONNECTED
+            if self._status == OBDStatus.BUS_CONNECTED:
+                self._status = OBDStatus.ITF_CONNECTED
+
+                # Report status changed
+                self._trigger_status_callback()
 
             raise
 
@@ -679,6 +701,14 @@ class ELM327(object):
 
         # Instantiate the corresponding protocol parser
         return self.supported_protocols()[ident](res_0100)
+
+
+    def _trigger_status_callback(self, **kwargs):
+        if self._status_callback:
+            try:
+                self._status_callback(self._status, **kwargs)
+            except:
+                logger.exception("Failed to trigger status callback")
 
 
     def _get_pps(self):
