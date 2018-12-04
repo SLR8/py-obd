@@ -49,10 +49,11 @@ class OBD(object):
         with it's assorted commands/sensors.
     """
 
-    def __init__(self, portstr=None, baudrate=None, protocol=None, fast=True, interface_cls=ELM327, status_callback=None):
+    def __init__(self, portstr=None, baudrate=None, protocol=None, fast=False, interface_cls=ELM327, status_callback=None):
         self.interface = None
         self.supported_commands = set(commands.base_commands())
         self.fast = fast # global switch for disabling optimizations
+        # TODO: Fast mode/last command cache is not always reset - this functionality should be moved to interface or removed completely
         self.__last_command = b"" # used for running the previous command with a CR
         self.__frame_counts = {} # keeps track of the number of return frames for each command
 
