@@ -245,8 +245,8 @@ class OBD(object):
             Sends commands to the car, and protects against sending unsupported commands.
         """
 
-        if self.status() != OBDStatus.BUS_CONNECTED:
-            raise Exception("No OBD connection to vehicle")
+        if self.status() == OBDStatus.NOT_CONNECTED:
+            raise Exception("Not connected to interface")
 
         # if the user forces, skip all checks
         if not force and not self.test_cmd(cmd):
@@ -286,8 +286,8 @@ class OBD(object):
             Low-level function that sends raw messages on bus.
         """
 
-        if self.status() != OBDStatus.BUS_CONNECTED:
-            raise Exception("No OBD connection to vehicle")
+        if self.status() == OBDStatus.NOT_CONNECTED:
+            raise Exception("Not connected to interface")
 
         # Set given header or use default
         self.interface.set_header(ELM327.OBD_HEADER if header == None else header)
