@@ -48,6 +48,12 @@ class OBDStatus:
     BUS_CONNECTED = "bus_connected"
 
 
+class OBDError(Exception):
+
+    def __init__(self, *args, **kwargs):
+        super(OBDError, self).__init__(*args, **kwargs)
+
+
 class bitarray:
     """
     Class for representing bitarrays (inefficiently)

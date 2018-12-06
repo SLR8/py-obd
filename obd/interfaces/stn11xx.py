@@ -1,7 +1,7 @@
 import collections
 import logging
 
-from .elm327 import ELM327
+from .elm327 import ELM327, ELM327Error
 from ..protocols import *
 from ..utils import OBDStatus
 
@@ -166,6 +166,11 @@ class SWC_ISO_15765_29bit_33k3(CANProtocol):
 # Interface implementation
 ########################################################################
 
+class STN11XXError(ELM327Error):
+
+    def __init__(self, *args, **kwargs):
+        super(STN11XXError, self).__init__(*args, **kwargs)
+
 class STN11XX(ELM327):
     """
         Handles communication with the STN11XX adapter.
@@ -283,7 +288,7 @@ class STN11XX(ELM327):
 
         res = self.send(b"STCMM" + str(mode).encode())
         if not self._is_ok(res):
-            raise Exception("Invalid response when setting CAN monitoring mode '{:}': {:}".format(value, res))
+            raise STN11XXError("Invalid response when setting CAN monitoring mode '{:}': {:}".format(value, res))
 
         logger.info("Changed CAN monitoring mode from '{:}' to '{:}'".format(self._can_monitor_mode, value))
         self._can_monitor_mode = value
@@ -321,18 +326,18 @@ class STN11XX(ELM327):
         # Change protocol
         res = self.send(b"STP" + ident.encode())
         if not self._is_ok(res):
-            raise Exception("Invalid response when manually changing to protocol '{:}': {:}".format(ident, res))
+            raise STN11XXError("Invalid response when manually changing to protocol '{:}': {:}".format(ident, res))
 
         # Verify protocol changed
         res = self.send(b"STPR")
         if not self._has_message(res, ident):
-            raise Exception("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(ident, res))
+            raise STN11XXError("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(ident, res))
 
         # Also set protocol baudrate if specified
         if baudrate != None:
             res = self.send(b"STPBR" + str(baudrate).encode())
             if not self._is_ok(res,):
-                raise Exception("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, ident, res))
+                raise STN11XXError("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, ident, res))
 
         # Initialize protocol parser
         return self.supported_protocols()[ident]([])

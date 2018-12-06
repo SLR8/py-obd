@@ -37,7 +37,7 @@ from .__version__ import __version__
 from .interfaces import *
 from .commands import commands
 from .OBDResponse import OBDResponse
-from .utils import scan_serial, OBDStatus
+from .utils import scan_serial, OBDStatus, OBDError
 
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ class OBD(object):
                 logger.exception("Failed to use explicit port '{:}'".format(portstr))
 
         if self.interface.status() == OBDStatus.NOT_CONNECTED:
-            raise Exception("Failed to connect to interface '{:}' - see log for details".format(interface_cls))
+            raise OBDError("Failed to connect to interface '{:}' - see log for details".format(interface_cls))
 
 
     def __load_commands(self):
@@ -187,7 +187,7 @@ class OBD(object):
         """ Change protocol for interface """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
-            raise Exception("Not connected to interface")
+            raise OBDError("Not connected to interface")
 
         ret = self.interface.set_protocol(protocol, baudrate=baudrate)
 
@@ -247,7 +247,7 @@ class OBD(object):
         """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
-            raise Exception("Not connected to interface")
+            raise OBDError("Not connected to interface")
 
         # if the user forces, skip all checks
         if not force and not self.test_cmd(cmd):
@@ -288,7 +288,7 @@ class OBD(object):
         """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
-            raise Exception("Not connected to interface")
+            raise OBDError("Not connected to interface")
 
         # Set given header or use default
         self.interface.set_header(ELM327.OBD_HEADER if header == None else header)
@@ -319,7 +319,7 @@ class OBD(object):
         """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
-            raise Exception("Not connected to interface")
+            raise OBDError("Not connected to interface")
 
         cmd_string = cmd_string.upper()
         if not cmd_string[:2] in ["AT", "ST"]:
@@ -345,7 +345,7 @@ class OBD(object):
         """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
-            raise Exception("Not connected to interface")
+            raise OBDError("Not connected to interface")
 
         # Remember to clear
         self.__last_command = ""

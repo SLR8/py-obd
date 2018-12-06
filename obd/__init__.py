@@ -44,7 +44,7 @@ from .commands import commands
 from .OBDCommand import OBDCommand
 from .OBDResponse import OBDResponse
 from .protocols import ECU
-from .utils import scan_serial, OBDStatus
+from .utils import scan_serial, OBDStatus, OBDError
 from .UnitsAndScaling import Unit
 
 import logging

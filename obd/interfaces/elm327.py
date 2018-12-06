@@ -39,7 +39,7 @@ import time
 
 from timeit import default_timer as timer
 from ..protocols import *
-from ..utils import OBDStatus
+from ..utils import OBDStatus, OBDError
 
 
 logger = logging.getLogger(__name__)
@@ -114,13 +114,11 @@ class SAE_J1939(CANProtocol):
 # Interface implementation
 ########################################################################
 
-
-class ELM327Error(Exception):
+class ELM327Error(OBDError):
 
     def __init__(self, *args, **kwargs):
         self.code = kwargs.pop("code", None)
-        super(Exception, self).__init__(*args, **kwargs)
-
+        super(ELM327Error, self).__init__(*args, **kwargs)
 
 class ELM327(object):
     """
@@ -326,8 +324,8 @@ class ELM327(object):
         # Try to communicate with the car, and load the correct protocol parser
         try:
             self.set_protocol(protocol)
-        except ELM327Error:
-            logger.exception("Unable to set protocol '{:}'".format(protocol))
+        except ELM327Error as err:
+            logger.warning(str(err))
 
             return
 
