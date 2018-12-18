@@ -625,7 +625,7 @@ class ELM327(object):
             self._port.timeout = timeout  # Reinstate our original timeout
 
 
-    def _verify_protocol(self, ident, force=False):
+    def _verify_protocol(self, ident, test=False):
         ret = []
 
         ignore_lines = ["SEARCHING...", "NO DATA"]
@@ -642,7 +642,7 @@ class ELM327(object):
                 err = self.ERRORS.get(line, "Invalid non-hex response: {:}".format(line))
 
                 msg = "Unable to verify connectivity of protocol '{:}': {:}".format(ident, err)
-                if force:
+                if test:
                     logger.warning(msg)
 
                     return []
@@ -652,7 +652,14 @@ class ELM327(object):
             ret.append(line)
 
         if not ret:
-            logger.warning("No data received when trying to verify connectivity of protocol '{:}'".format(ident))
+
+            msg = "No data received when trying to verify connectivity of protocol '{:}'".format(ident)
+            if test:
+                logger.warning(msg)
+
+                return []
+            else:
+                raise ELM327Error(msg)
 
         return ret
 
@@ -665,7 +672,7 @@ class ELM327(object):
             raise ELM327Error("Invalid response when manually changing to protocol '{:}': {:}".format(ident, res))
 
         # Verify protocol connectivity
-        res_0100 = self._verify_protocol(ident, force=not verify)
+        res_0100 = self._verify_protocol(ident, test=not verify)
 
         # Verify protocol changed
         res = self.send(b"ATDPN")
@@ -688,7 +695,7 @@ class ELM327(object):
             raise ELM327Error("Invalid response when setting auto protocol mode: {:}".format(res))
 
         # Search for protocol and verify connectivity
-        res_0100 = self._verify_protocol("auto", force=not verify)
+        res_0100 = self._verify_protocol("auto", test=not verify)
 
         # Get protocol number
         res = self.send(b"ATDPN")
