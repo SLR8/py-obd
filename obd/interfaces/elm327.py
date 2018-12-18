@@ -389,7 +389,25 @@ class ELM327(object):
         return self._status
 
 
-    def protocol(self):
+    def supported_protocols(self):
+        return self._SUPPORTED_PROTOCOLS
+
+
+    def protocol(self, verify=True):
+
+        # Verify protocol if requested and not already unknown
+        if verify and not isinstance(self._protocol, UnknownProtocol):
+            try:
+                self._verify_protocol(self._protocol.ID)
+            except ELM327Error as err:
+                self._unknown_protocol()
+
+                logger.warning(str(err))
+            except:
+                self._unknown_protocol()
+
+                raise
+
         return self._protocol
 
 
@@ -397,39 +415,9 @@ class ELM327(object):
         return self._protocol.ecu_map.values() if self._protocol else []
 
 
-    def set_baudrate(self, baudrate):
-        if baudrate == None:
-            
-            # When connecting to pseudo terminal, don't bother with auto baud
-            if self._port.portstr.startswith("/dev/pts"):
-                logger.warning("Detected pseudo terminal, skipping baudrate setup")
-                return
-            
-            # Autodetect baudrate using default choices list
-            self._auto_baudrate(self.TRY_BAUDRATES)
-
-        elif isinstance(baudrate, list):
-
-            # Autodetect baudrate using given choices list
-            self._auto_baudrate(baudrate)
-
-        else:
-
-            # Create a list of choices with given baudrate as first entry
-            choices = list(self.TRY_BAUDRATES)
-            choices.remove(baudrate)
-            choices.insert(0, baudrate)
-
-            self._auto_baudrate(choices)
-
-
-    def supported_protocols(self):
-        return self._SUPPORTED_PROTOCOLS
-
-
     def set_protocol(self, ident, **kwargs):
 
-        # Validate protocol if given
+        # Validate protocol identifier if given
         if ident != None and ident not in self.supported_protocols():
             raise ELM327Error("Unsupported protocol '{:}'".format(ident))
 
@@ -456,16 +444,35 @@ class ELM327(object):
             self._trigger_status_callback(protocol=self._protocol)
 
         except:
-            self._protocol = UnknownProtocol([])
-
-            # Update overall status
-            if self._status == OBDStatus.BUS_CONNECTED:
-                self._status = OBDStatus.ITF_CONNECTED
-
-                # Report status changed
-                self._trigger_status_callback()
+            self._unknown_protocol()
 
             raise
+
+
+    def set_baudrate(self, baudrate):
+        if baudrate == None:
+            
+            # When connecting to pseudo terminal, don't bother with auto baud
+            if self._port.portstr.startswith("/dev/pts"):
+                logger.warning("Detected pseudo terminal, skipping baudrate setup")
+                return
+            
+            # Autodetect baudrate using default choices list
+            self._auto_baudrate(self.TRY_BAUDRATES)
+
+        elif isinstance(baudrate, list):
+
+            # Autodetect baudrate using given choices list
+            self._auto_baudrate(baudrate)
+
+        else:
+
+            # Create a list of choices with given baudrate as first entry
+            choices = list(self.TRY_BAUDRATES)
+            choices.remove(baudrate)
+            choices.insert(0, baudrate)
+
+            self._auto_baudrate(choices)
 
 
     def set_expect_responses(self, value):
@@ -699,6 +706,17 @@ class ELM327(object):
 
         # Instantiate the corresponding protocol parser
         return self.supported_protocols()[ident](res_0100)
+
+
+    def _unknown_protocol(self):
+        self._protocol = UnknownProtocol([])
+
+        # Update overall status
+        if self._status == OBDStatus.BUS_CONNECTED:
+            self._status = OBDStatus.ITF_CONNECTED
+
+            # Report status changed
+            self._trigger_status_callback()
 
 
     def _trigger_status_callback(self, **kwargs):

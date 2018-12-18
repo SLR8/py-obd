@@ -171,10 +171,10 @@ class OBD(object):
         return self.interface.connection()
 
 
-    def protocol(self):
-        """ Returns the active protocol object """
+    def protocol(self, verify=True):
+        """ Returns the active protocol object but verifies it first if requested """
 
-        return self.interface.protocol()
+        return self.interface.protocol(verify=verify)
 
 
     def supported_protocols(self):
@@ -193,6 +193,8 @@ class OBD(object):
 
         if reload_commands:
             self.__load_commands()
+        else:
+            self.supported_commands = set(commands.base_commands())
 
         return ret
 
