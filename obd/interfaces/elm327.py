@@ -720,7 +720,7 @@ class ELM327(object):
 
         # Update overall status
         if self._status == OBDStatus.BUS_CONNECTED:
-            self._status = OBDStatus.ITF_CONNECTED
+            self._status = OBDStatus.BUS_DISCONNECTED
 
             # Report status changed
             self._trigger_status_callback()

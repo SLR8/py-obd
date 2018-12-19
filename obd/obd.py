@@ -84,7 +84,7 @@ class OBD(object):
                 self.interface = interface_cls(port, status_callback=status_callback)
                 try:
                     self.interface.open(baudrate, protocol)
-                    if self.interface.status() >= OBDStatus.ITF_CONNECTED:
+                    if self.interface.status() != OBDStatus.NOT_CONNECTED:
                         break # success! stop searching for serial
 
                 except:

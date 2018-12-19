@@ -46,6 +46,7 @@ class OBDStatus:
     NOT_CONNECTED = "not_connected"
     ITF_CONNECTED = "interface_connected"
     BUS_CONNECTED = "bus_connected"
+    BUS_DISCONNECTED = "bus_disconnected"
 
 
 class OBDError(Exception):
