@@ -270,6 +270,10 @@ class STN11XX(ELM327):
 
             logger.warning("Serial connection baudrate '{:}' is lower than protocol baudrate '{:}'".format(self._port.baudrate, self._protocol.baudrate))
 
+        # Check that specified baudrate is set
+        if kwargs.get("baudrate", None) != None and kwargs["baudrate"] != self._protocol.baudrate:
+            raise STN11XXError("Requested baudrate could not be set - be aware that ELM327 protocols does not support custom baudrates")
+
         return ret
 
 
@@ -318,9 +322,6 @@ class STN11XX(ELM327):
 
         # Call super method if not a STN protocol
         if not ident in self.STN_SUPPORTED_PROTOCOLS:
-            if baudrate != None:
-                raise ValueError("Defining of custom baudrate is not supported for ELM327 protocols")
-
             return super(STN11XX, self)._manual_protocol(ident)
 
         # Change protocol
