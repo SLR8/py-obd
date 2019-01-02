@@ -284,7 +284,7 @@ class OBD(object):
         return cmd(messages) # compute a response object
 
 
-    def send(self, msg_string, header=None, auto_format=False, expect_response=False):
+    def send(self, msg_string, header=None, auto_format=False, expect_response=False, echo=False):
         """
             Low-level function that sends raw messages on bus.
         """
@@ -293,7 +293,9 @@ class OBD(object):
             raise OBDError("Not connected to interface")
 
         # Set given header or use default
-        self.interface.set_header(ELM327.OBD_HEADER if header == None else header)
+        if header == None:
+            header = ELM327.OBD_HEADER
+        self.interface.set_header(header)
 
         # Set CAN automatic formatting
         self.interface.set_can_auto_format(auto_format)
@@ -306,6 +308,10 @@ class OBD(object):
 
         try:
             lines = self.interface.send(msg_string)
+
+            # If echo prepend request message including header
+            if echo:
+                lines.insert(0, "{:}#{:}".format(msg_string, header))
 
         finally:
 
