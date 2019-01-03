@@ -311,7 +311,7 @@ class OBD(object):
 
             # If echo prepend request message including header
             if echo:
-                lines.insert(0, "{:}#{:}".format(msg_string, header))
+                lines.insert(0, "{:} {:}".format(header, msg_string))
 
         finally:
 
