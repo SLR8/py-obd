@@ -295,7 +295,7 @@ class OBD(object):
         # Set given header or use default
         if header == None:
             header = ELM327.OBD_HEADER
-        self.interface.set_header(header)
+        self.interface.set_header(str(header))
 
         # Set CAN automatic formatting
         self.interface.set_can_auto_format(auto_format)
