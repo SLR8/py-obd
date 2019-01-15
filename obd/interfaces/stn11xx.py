@@ -340,7 +340,7 @@ class STN11XX(ELM327):
             if not self._is_ok(res,):
                 raise STN11XXError("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, ident, res))
 
-        # Verify protocol OBD-II connectivity
+        # Verify if the protocol has OBD-II support
         if verify:
             res_0100 = self._verify_protocol(ident, test=not verify)
 
