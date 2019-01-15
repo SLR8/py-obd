@@ -183,15 +183,16 @@ class OBD(object):
         return self.interface.supported_protocols()
 
 
-    def change_protocol(self, protocol, baudrate=None, reload_commands=True):
+    def change_protocol(self, protocol, **kwargs):
         """ Change protocol for interface """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
             raise OBDError("Not connected to interface")
 
-        ret = self.interface.set_protocol(protocol, baudrate=baudrate)
+        ret = self.interface.set_protocol(protocol, **kwargs)
 
-        if reload_commands:
+        # Try to load OBD commands
+        if kwargs.get("verify", True):
             self.__load_commands()
         else:
             self.supported_commands = set(commands.base_commands())

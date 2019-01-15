@@ -318,7 +318,7 @@ class STN11XX(ELM327):
             self._port.timeout = timeout
 
 
-    def _manual_protocol(self, ident, baudrate=None):
+    def _manual_protocol(self, ident, verify=False, baudrate=None):  # TODO: Verify not supported/implemented for STN protocols
 
         # Call super method if not a STN protocol
         if not ident in self.STN_SUPPORTED_PROTOCOLS:

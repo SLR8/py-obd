@@ -425,7 +425,7 @@ class ELM327(object):
 
             # Autodetect protocol
             if ident == None:
-                self._protocol = self._auto_protocol()
+                self._protocol = self._auto_protocol(**kwargs)
                 self._protocol.autodetected = True
 
                 logger.info("Protocol '{:}' set automatically: {:}".format(self._protocol.ID, self._protocol))
@@ -664,7 +664,7 @@ class ELM327(object):
         return ret
 
 
-    def _manual_protocol(self, ident, verify=True):
+    def _manual_protocol(self, ident, verify=True, **kwargs):
 
         # Change protocol
         res = self.send(b"ATTP" + ident.encode())
@@ -683,7 +683,7 @@ class ELM327(object):
         return self.supported_protocols()[ident](res_0100)
 
 
-    def _auto_protocol(self, verify=True):
+    def _auto_protocol(self, verify=True, **kwargs):
         """
         Attempts communication with the car.
         Upon success, the appropriate protocol parser is loaded.
