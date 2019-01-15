@@ -322,7 +322,7 @@ class STN11XX(ELM327):
 
         # Call super method if not a STN protocol
         if not ident in self.STN_SUPPORTED_PROTOCOLS:
-            return super(STN11XX, self)._manual_protocol(ident)
+            return super(STN11XX, self)._manual_protocol(ident, verify=verify)
 
         # Change protocol
         res = self.send(b"STP" + ident.encode())
