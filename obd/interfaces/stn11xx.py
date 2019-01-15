@@ -318,7 +318,7 @@ class STN11XX(ELM327):
             self._port.timeout = timeout
 
 
-    def _manual_protocol(self, ident, verify=False, baudrate=None):  # TODO: Verify not supported/implemented for STN protocols
+    def _manual_protocol(self, ident, verify=False, baudrate=None):
 
         # Call super method if not a STN protocol
         if not ident in self.STN_SUPPORTED_PROTOCOLS:
@@ -339,6 +339,13 @@ class STN11XX(ELM327):
             res = self.send(b"STPBR" + str(baudrate).encode())
             if not self._is_ok(res,):
                 raise STN11XXError("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, ident, res))
+
+        # Verify protocol OBD-II connectivity
+        if verify:
+            res_0100 = self._verify_protocol(ident, test=not verify)
+
+            # Initialize protocol parser
+            return self.supported_protocols()[ident](res_0100)
 
         # Initialize protocol parser
         return self.supported_protocols()[ident]([])
