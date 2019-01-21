@@ -260,6 +260,7 @@ class OBD(object):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Querying command: %s" % str(cmd))
 
+        # TODO: Append number of expected frames to command string to improve performance (avoid waiting for timeout)
         cmd_string = self.__build_command_string(cmd)
 
         try:
@@ -302,17 +303,20 @@ class OBD(object):
         self.interface.set_can_auto_format(auto_format)
 
         # Set responses expected or not
-        self.interface.set_expect_responses(expect_response)
+        self.interface.set_expect_responses(bool(expect_response))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Sending message: %s" % str(msg_string))
 
         try:
-            lines = self.interface.send(msg_string)
+            if isinstance(expect_response, bool):  # NOTE: 'bool' is child of 'int'
+                lines = self.interface.send(msg_string)
+            else:
+                lines = self.interface.send(msg_string + " " + str(expect_response))  # Specify the number of expected frames (to avoid waiting for timeout)
 
             # If echo prepend request message including header
             if echo:
-                lines.insert(0, "{:} {:}".format(header, msg_string))
+                lines.insert(0, header + " " + msg_string)
 
         finally:
 
