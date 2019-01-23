@@ -229,6 +229,7 @@ class ELM327(object):
         self._echo_off            = False
         self._print_headers       = False
         self._expect_responses    = True
+        self._response_timeout    = 32  # Equals 205 ms
         self._header              = self.OBD_HEADER
         self._can_auto_format     = True
         self._can_monitor_mode    = 0
@@ -491,6 +492,24 @@ class ELM327(object):
             logger.debug("Changed responses from '{:}' to '{:}'".format(self._expect_responses, value))
 
         self._expect_responses = value
+
+
+    def set_response_timeout(self, value):
+        """
+        Sets timeout to value x 4 ms
+        """
+
+        if value == self._response_timeout:
+            return
+
+        res = self.send(b"ATST" + str(int(value)).encode())
+        if not self._is_ok(res):
+            raise ELM327Error("Invalid response when setting response timeout '{:}': {:}".format(value, res))
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Changed response timeout from '{:}' to '{:}'".format(self._response_timeout, value))
+
+        self._response_timeout = value
 
 
     def set_header(self, value):
