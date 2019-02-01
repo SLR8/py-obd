@@ -218,7 +218,7 @@ class STN11XX(ELM327):
     # We check the the default baud rate first, then go fastest to
     # slowest, on the theory that anyone who's using a slow baud rate is
     # going to be less picky about the time required to detect it.
-    TRY_BAUDRATES = [9600, 2304000, 1152000, 576000, 230400, 115200, 57600, 38400, 19200]
+    TRY_BAUDRATES = [9600, 2304000, 1152000, 1056000, 960000, 576000, 230400, 115200, 57600, 38400, 19200]
 
 
     def set_baudrate(self, baudrate):

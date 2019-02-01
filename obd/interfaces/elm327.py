@@ -216,7 +216,7 @@ class ELM327(object):
             return decorator
 
 
-    def __init__(self, port, timeout=10, status_callback=None):
+    def __init__(self, port, timeout=None, status_callback=None):
         """
         Initializes interface instance.
         """
@@ -234,10 +234,11 @@ class ELM327(object):
         self._can_auto_format     = True
         self._can_monitor_mode    = 0
 
+        self._default_timeout = timeout if timeout != None else 10  # Seconds
         self._port = serial.Serial(parity   = serial.PARITY_NONE,
                                    stopbits = 1,
                                    bytesize = 8,
-                                   timeout  = timeout)  # Seconds
+                                   timeout  = self._default_timeout)
         self._port.port = port
 
 
@@ -549,7 +550,7 @@ class ELM327(object):
 
 
     @Decorators.ensure_obd_mode
-    def query(self, cmd, parse=True):
+    def query(self, cmd, parse=True, read_timeout=None):
         """
         Used to service all OBDCommands.
 
@@ -561,7 +562,7 @@ class ELM327(object):
         Returns a list of parsed Message objects or raw response lines.
         """
 
-        lines = self.send(cmd)
+        lines = self.send(cmd, read_timeout=read_timeout)
 
         # Parse using protocol if requested
         if parse:
@@ -571,7 +572,7 @@ class ELM327(object):
         return lines
 
 
-    def send(self, cmd, delay=None, filtering=True, interrupt_delay=None):
+    def send(self, cmd, delay=None, filtering=True, read_timeout=None, interrupt_delay=None):
         """
         Send raw command string.
 
@@ -588,7 +589,10 @@ class ELM327(object):
 
             time.sleep(delay)
 
-        lines = self._read(interrupt_delay=interrupt_delay)
+        lines = self._read(timeout=read_timeout, interrupt_delay=interrupt_delay)
+
+        if not lines:
+            log.warn("Got no response on command: {:}".format(cmd))
 
         if not filtering:
             return lines
@@ -648,7 +652,7 @@ class ELM327(object):
         ret = []
 
         ignore_lines = ["SEARCHING...", "NO DATA"]
-        for line in self.query(b"0100", parse=False):
+        for line in self.query(b"0100", parse=False, read_timeout=10):
 
             # Skip ignore lines
             if line in ignore_lines:
@@ -833,7 +837,7 @@ class ELM327(object):
         self._port.flush()  # Wait for the output buffer to finish transmitting
 
 
-    def _read(self, interrupt_delay=None):
+    def _read(self, timeout=None, interrupt_delay=None):
         """
         Low-level read function.
 
@@ -844,53 +848,66 @@ class ELM327(object):
         if not self._port or not self._port.is_open:
             raise ELM327Error("Cannot read when serial connection is not open")
 
-        buffer = bytearray()
-        start = timer()
+        # Override default timeout if requested
+        if timeout != None and self._port.timeout != timeout:
+            self._port.timeout = timeout
 
-        while True:
+        try:
 
-            # Retrieve as much data as possible
-            data = self._port.read(self._port.in_waiting or 1)
+            buffer = bytearray()
+            start = timer()
 
-            # If nothing was recieved
-            if not data:
-                logger.warning("No data received within timeout of {:d} seconds".format(self._port.timeout))
+            while True:
 
-                # Only break if no interrupt character is pending
-                if interrupt_delay == None:
+                # Retrieve as much data as possible
+                data = self._port.read(self._port.in_waiting or 1)
+
+                # If nothing was recieved
+                if not data:
+                    logger.error("No more data received on serial port within timeout of {:d} second(s) - the connection may be unstable due to high baud rate".format(self._port.timeout))
+                    logger.warning("Partial data received until timeout occurred: {:}".format(repr(buffer)))
+
+                    # Only break if no interrupt character is pending
+                    if interrupt_delay == None:
+                        break
+
+                buffer.extend(data)
+
+                # End on chevron + carriage return (ELM prompt characters)
+                if buffer.endswith(self.PROMPT):
                     break
 
-            buffer.extend(data)
+                # Check if it is time to send an interrupt character
+                if interrupt_delay != None and (timer() - start) >= interrupt_delay:
+                    logger.info("Sending interrupt character during read")
 
-            # End on chevron + carriage return (ELM prompt characters)
+                    self._port.write(b"\x7F")
+                    interrupt_delay = None
+
+            # Log, and remove the "bytearray(   ...   )" part
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Read: " + repr(buffer)[10:-1])
+
+            # Clean out any null characters
+            buffer = re.sub(b"\x00", b"", buffer)
+
+            # Remove the prompt characters
             if buffer.endswith(self.PROMPT):
-                break
+                buffer = buffer[:-len(self.PROMPT)]
 
-            # Check if it is time to send an interrupt character
-            if interrupt_delay != None and (timer() - start) >= interrupt_delay:
-                logger.info("Sending interrupt character during read")
+            # Convert bytes into a standard string
+            string = buffer.decode()
 
-                self._port.write(b"\x7F")
-                interrupt_delay = None
+            # Splits into lines while removing empty lines and trailing spaces
+            lines = [s.strip() for s in re.split("[\r\n]", string) if bool(s)]
 
-        # Log, and remove the "bytearray(   ...   )" part
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Read: " + repr(buffer)[10:-1])
+            return lines
 
-        # Clean out any null characters
-        buffer = re.sub(b"\x00", b"", buffer)
+        finally:
 
-        # Remove the prompt characters
-        if buffer.endswith(self.PROMPT):
-            buffer = buffer[:-len(self.PROMPT)]
-
-        # Convert bytes into a standard string
-        string = buffer.decode()
-
-        # Splits into lines while removing empty lines and trailing spaces
-        lines = [s.strip() for s in re.split("[\r\n]", string) if bool(s)]
-
-        return lines
+            # Restore default timeout if changed
+            if self._port.timeout != self._default_timeout:
+                self._port.timeout = self._default_timeout
 
 
     def _is_ok(self, lines, expect_echo=False):
