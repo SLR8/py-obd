@@ -591,8 +591,8 @@ class ELM327(object):
 
         lines = self._read(timeout=read_timeout, interrupt_delay=interrupt_delay)
 
-        if not lines:
-            log.warn("Got no response on command: {:}".format(cmd))
+        if logger.isEnabledFor(logging.DEBUG) and not lines:
+            logger.debug("Got no response on command: {:}".format(cmd))
 
         if not filtering:
             return lines
