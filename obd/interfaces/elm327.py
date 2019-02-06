@@ -195,27 +195,6 @@ class ELM327(object):
     PP_ATE = "09"
 
 
-    class Decorators(object):
-
-        @staticmethod
-        def ensure_obd_mode(func):
-
-            def decorator(self, *args, **kwargs):
-
-                # Ensure OBD header is set
-                self.set_header(self.OBD_HEADER)
-
-                # Ensure CAN automatic formatting is enabled
-                self.set_can_auto_format(True)
-
-                # Ensure responses are turned on
-                self.set_expect_responses(True)
-
-                return func(self, *args, **kwargs)
-
-            return decorator
-
-
     def __init__(self, port, timeout=None, status_callback=None):
         """
         Initializes interface instance.
@@ -549,8 +528,7 @@ class ELM327(object):
         self._can_auto_format = value
 
 
-    @Decorators.ensure_obd_mode
-    def query(self, cmd, parse=True, read_timeout=None):
+    def query(self, cmd, header=None, parse=True, read_timeout=None):
         """
         Used to service all OBDCommands.
 
@@ -561,6 +539,21 @@ class ELM327(object):
 
         Returns a list of parsed Message objects or raw response lines.
         """
+
+        # Ensure OBD header is set
+        if header == None:
+            if self._header != self.OBD_HEADER:
+                self.set_header(self.OBD_HEADER)
+        elif self._header != header:
+            self.set_header(header)
+
+        # Ensure CAN automatic formatting is enabled
+        if not self._can_auto_format:
+            self.set_can_auto_format(True)
+
+        # Ensure responses are turned on
+        if not self._expect_responses:
+            self.set_expect_responses(True)
 
         lines = self.send(cmd, read_timeout=read_timeout)
 

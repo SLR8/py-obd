@@ -246,7 +246,7 @@ class OBD(object):
         return True
 
 
-    def query(self, cmd, force=False):
+    def query(self, cmd, header=None, force=False):
         """
             Sends commands to the car, and protects against sending unsupported commands.
         """
@@ -266,7 +266,7 @@ class OBD(object):
         cmd_string = self.__build_command_string(cmd)
 
         try:
-            messages = self.interface.query(cmd_string)
+            messages = self.interface.query(cmd_string, header=header)
 
         finally:
 
