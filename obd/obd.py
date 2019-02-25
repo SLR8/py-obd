@@ -49,7 +49,7 @@ class OBD(object):
         with it's assorted commands/sensors.
     """
 
-    def __init__(self, portstr=None, baudrate=None, protocol=None, verify=True, timeout=None, fast=False, interface_cls=ELM327, status_callback=None):
+    def __init__(self, portstr=None, baudrate=None, timeout=None, protocol=None, load_commands=True, fast=False, interface_cls=ELM327, status_callback=None):
         self.interface = None
         self.supported_commands = set(commands.base_commands())
         self.fast = fast # global switch for disabling optimizations
@@ -58,16 +58,16 @@ class OBD(object):
         self.__frame_counts = {} # keeps track of the number of return frames for each command
 
         logger.debug("======================= Python-OBD (v%s) =======================" % __version__)
-        self.__connect(interface_cls, portstr, baudrate, protocol=protocol, verify=verify, timeout=timeout, status_callback=status_callback)
+        self.__connect(interface_cls, portstr, baudrate, timeout=timeout, protocol=protocol, status_callback=status_callback)
 
-        # Try to load the car's supported commands - but only when protocol has been verified
-        if verify:
+        # Try to load the car's supported commands
+        if load_commands:
             self.__load_commands()
 
         logger.debug("===================================================================")
 
 
-    def __connect(self, interface_cls, portstr, baudrate, protocol=None, verify=True, timeout=None, status_callback=None):
+    def __connect(self, interface_cls, portstr, baudrate, timeout=None, protocol=None, status_callback=None):
         """
             Attempts to instantiate and open an ELM327 interface connection object.
         """
@@ -99,7 +99,7 @@ class OBD(object):
 
             self.interface = interface_cls(portstr, timeout=timeout, status_callback=status_callback)
             try:
-                self.interface.open(baudrate, protocol=protocol, verify=verify)
+                self.interface.open(baudrate, protocol=protocol)
             except:
                 logger.exception("Failed to use explicit port '{:}'".format(portstr))
 

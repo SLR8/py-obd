@@ -221,16 +221,15 @@ class ELM327(object):
         self._port.port = port
 
 
-    def open(self, baudrate, protocol=None, verify=True, echo_off=True, print_headers=True):
+    def open(self, baudrate, protocol=None, echo_off=True, print_headers=True):
         """
         Opens serial connection and initializes ELM327 interface.
         """
 
-        logger.info("Opening interface connection: Port={:}, Baudrate={:}, Protocol={:}, Verify={:}".format(
+        logger.info("Opening interface connection: Port={:}, Baudrate={:}, Protocol={:}".format(
             self._port.port,
             "auto" if baudrate is None else baudrate,
-            "auto" if protocol is None else protocol,
-            verify
+            "auto" if protocol is None else protocol
         ))
 
         # Open serial connection
@@ -305,17 +304,17 @@ class ELM327(object):
 
         # Try to communicate with the car, and load the correct protocol parser
         try:
-            self.set_protocol(protocol, verify=verify)
+            prot = protocol if isinstance(protocol, dict) else {"id", protocol}
+            self.set_protocol(prot.pop("id", None), **prot)
         except ELM327Error as err:
             logger.warning(str(err))
 
             return
 
-        logger.info("Connected successfully to vehicle: Port={:}, Baudrate={:}, Protocol={:}, Verify={:}".format(
+        logger.info("Connected successfully to vehicle: Port={:}, Baudrate={:}, Protocol={:}".format(
             self._port.port,
             self._port.baudrate,
-            self._protocol.ID,
-            verify
+            self._protocol.ID
         ))
 
 
