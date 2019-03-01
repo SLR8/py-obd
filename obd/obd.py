@@ -315,7 +315,7 @@ class OBD(object):
             logger.debug("Sending message: %s" % str(msg_string))
 
         try:
-            if isinstance(expect_response, bool):  # NOTE: 'bool' is child of 'int'
+            if isinstance(expect_response, bool):  # NOTE: In Python 'bool' is child of 'int'
                 lines = self.interface.send(msg_string)
             else:
                 lines = self.interface.send(msg_string + " " + str(expect_response))  # Specify the number of expected frames (to avoid waiting for timeout)

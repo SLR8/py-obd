@@ -135,7 +135,7 @@ class ELM327(object):
         "DATA ERROR":         "Incorrect response from vehicle",
         "FB ERROR":           "Problem with feedback signal",
         "UNABLE TO CONNECT":  "Unable to connect because no supported protocol found",
-        "NO DATA":            "No response from vehicle within timeout",
+        "NO DATA":            "No data received from vehicle within timeout",
         "BUFFER FULL":        "Internal RS232 transmit buffer is full",
         "ACT ALERT":          "No RS232 or OBD activity for some time",
         "LV RESET":           "Low voltage reset",
@@ -599,6 +599,11 @@ class ELM327(object):
                 logger.warning("Sent command does not match echo: '{:}' != '{:}'".format(cmd, lines[0]))
             else:
                 lines = lines[1:]
+
+        # Check for errors
+        for line in lines:
+            if line in self.ERRORS:
+                raise ELM327Error(self.ERRORS[line], code=line)
 
         return lines
 
