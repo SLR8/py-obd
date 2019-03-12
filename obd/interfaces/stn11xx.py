@@ -1,6 +1,8 @@
+import datetime
 import collections
 import logging
 
+from timeit import default_timer as timer
 from .elm327 import ELM327, ELM327Error
 from ..protocols import *
 from ..utils import OBDStatus
@@ -220,6 +222,17 @@ class STN11XX(ELM327):
     # going to be less picky about the time required to detect it.
     TRY_BAUDRATES = [9600, 2304000, 1152000, 1056000, 960000, 576000, 230400, 115200, 57600, 38400, 19200]
 
+    FILTER_TYPE_PASS = "PASS"
+    FILTER_TYPE_BLOCK = "BLOCK"
+    FILTER_TYPE_FLOW = "FLOW"
+    FILTER_TYPES = [FILTER_TYPE_PASS, FILTER_TYPE_BLOCK, FILTER_TYPE_FLOW]
+
+
+    def __init__(self, *args, **kwargs):
+        super(STN11XX, self).__init__(*args, **kwargs)
+
+        self._filters = []
+
 
     def set_baudrate(self, baudrate):
 
@@ -290,7 +303,7 @@ class STN11XX(ELM327):
         if value == self._can_monitor_mode:
             return
 
-        res = self.send(b"STCMM" + str(mode).encode())
+        res = self.send(b"STCMM" + str(value).encode())
         if not self._is_ok(res):
             raise STN11XXError("Invalid response when setting CAN monitoring mode '{:}': {:}".format(value, res))
 
@@ -298,24 +311,147 @@ class STN11XX(ELM327):
         self._can_monitor_mode = value
 
 
-    def monitor_all(self, duration=10, mode=0, auto_format=True):
+    def monitor(self, duration=10, mode=0, auto_format=False, filtering=False):
         """
-        Monitor all messages on OBD bus. For CAN protocols, all messages will be treated as ISO 15765.
+        Monitor messages on bus. For CAN protocols, all messages will be treated as ISO 15765.
         """
 
-        # Set CAN monitoring mode
-        self.set_can_monitor_mode(mode)
-
-        # Set CAN automatic formatting
+        # Ensure CAN automatic formatting
         self.set_can_auto_format(auto_format)
 
-        timeout = self._port.timeout
-        self._port.timeout = duration
+        # Ensure CAN monitoring mode
+        self.set_can_monitor_mode(mode)
 
+        timeout = self._port.timeout
         try:
-            return self.send(b"STMA", interrupt_delay=duration)
+            if duration == None:
+
+                # Ensure monitor state
+                if filtering and self._state != self.STATE_MONITOR:
+                    self._write("STM")
+
+                    # Change state of interface
+                    self._state = self.STATE_MONITOR
+                elif not filtering and self._state != self.STATE_MONITOR_ALL:
+                    self._write("STMA")
+
+                    # Change state of interface
+                    self._state = self.STATE_MONITOR_ALL
+
+            else:
+                self._port.timeout = duration
+
+                return self.send("STM" if filtering else "STMA", interrupt_delay=duration)
         finally:
-            self._port.timeout = timeout
+            if self._port.timeout != timeout:
+                self._port.timeout = timeout
+
+
+    def monitor_continuously(self, wait=False, limit=None, duration=None, enrich=None, **kwargs):
+        """
+        Monitor messages on bus continuously.
+        """
+
+        ret = []
+
+        # Ensure infinite monitoring
+        self.monitor(duration=None, **kwargs)
+
+        # Read lines until last or limit reached
+        start = timer()
+        count = 0
+        while True:
+            count += 1
+
+            res = self._read_line(wait=wait or count==1)  # Always wait for the first line
+
+            # Return what we got so far if no more lines to read
+            if res == None:
+                break
+
+            # Enrich result if requested
+            if enrich:
+                res = enrich(res)
+
+            ret.append(res)
+
+            # Check if limit has been reached
+            if limit and count >= limit:
+                logger.warning("Read limit of {:} line(s) reached - this may indicate that more data is being produced than can be handled".format(limit))
+
+                break
+
+            # Check if duration has been reached
+            if duration and (timer() - start) >= duration:
+                logger.info("Duration of {:} second(s) reached - read {:} line(s)".format(duration, count))
+
+                break
+
+        return ret
+
+
+    def list_filters(self, type=None):
+        if type != None:
+            type = type.upper()
+
+        if type and type not in self.FILTER_TYPES:
+            raise ValueError("Unsupported filter type - allowed options are: {:}".format(", ".join(self.FILTER_TYPES)))
+
+        return [f.copy() for f in self._filters if type == None or f["type"] == type]
+
+
+    def add_filter(self, type, pattern, mask):
+        if type != None:
+            type = type.upper()
+
+        cmd = None
+        if type == self.FILTER_TYPE_PASS:
+            cmd = "STFAP"
+        elif type == self.FILTER_TYPE_BLOCK:
+            cmd = "STFAB"
+        elif type == self.FILTER_TYPE_FLOW:
+            cmd = "STFAFC"
+        else:
+            raise ValueError("Unsupported filter type - allowed options are: {:}".format(", ".join(self.FILTER_TYPES)))
+
+        res = self.send("{:} {:},{:}".format(cmd, pattern, mask))
+        if not self._is_ok(res):
+            raise STN11XXError("Failed to add '{:}' filter: {:}".format(type, res))
+
+        self._filters.append({
+                "type": type,
+                "pattern": pattern,
+                "mask": mask
+            })
+
+
+    def clear_filters(self, type=None):
+        if type != None:
+            type = type.upper()
+
+        if type and type not in self.FILTER_TYPES:
+            raise ValueError("Unsupported filter type - allowed options are: {:}".format(", ".join(self.FILTER_TYPES)))
+
+        if type == None or type == self.FILTER_TYPE_PASS:
+            res = self.send("STFCP")
+            if not self._is_ok(res):
+                raise STN11XXError("Failed to clear '{:}' filters: {:}".format(self.FILTER_TYPE_PASS, res))
+
+            self._filters = list(filter(lambda f: f["type"] != self.FILTER_TYPE_PASS, self._filters))
+
+        if type == None or type == self.FILTER_TYPE_BLOCK:
+            res = self.send("STFCB")
+            if not self._is_ok(res):
+                raise STN11XXError("Failed to clear '{:}' filters: {:}".format(self.FILTER_TYPE_BLOCK, res))
+
+            self._filters = list(filter(lambda f: f["type"] != self.FILTER_TYPE_BLOCK, self._filters))
+
+        if type == None or type == self.FILTER_TYPE_FLOW:
+            res = self.send("STFCFC")
+            if not self._is_ok(res):
+                raise STN11XXError("Failed to clear '{:}' filters: {:}".format(self.FILTER_TYPE_FLOW, res))
+
+            self._filters = list(filter(lambda f: f["type"] != self.FILTER_TYPE_FLOW, self._filters))
 
 
     def _manual_protocol(self, ident, verify=False, baudrate=None):
