@@ -126,6 +126,7 @@ class ELM327(object):
     """
 
     PROMPT = b"\r>"
+    INTERRUPT = b"\x7F"
     OK = b"OK"
     ERRORS = {
         "?":                  "Unsupported command",
@@ -194,6 +195,10 @@ class ELM327(object):
     PP_ATH = "01"
     PP_ATE = "09"
 
+    # State of command interface
+    STATE_INTERACTIVE = "INTERACTIVE"
+    STATE_MONITOR = "MONITOR"
+    STATE_MONITOR_ALL = "MONITOR_ALL"
 
     def __init__(self, port, timeout=None, status_callback=None):
         """
@@ -203,16 +208,21 @@ class ELM327(object):
         self._status              = OBDStatus.NOT_CONNECTED
         self._status_callback     = status_callback
         self._protocol            = UnknownProtocol([])
+        self._state               = self.STATE_INTERACTIVE
 
-        # Default values for settings
+        # Settings controlled via programmable parameters
         self._echo_off            = False
         self._print_headers       = False
-        self._expect_responses    = True
-        self._response_timeout    = 32  # Equals 205 ms
-        self._header              = self.OBD_HEADER
-        self._can_auto_format     = True
-        self._can_monitor_mode    = 0
 
+        # Settings that can be changed runtime
+        # IMPORTANT: Must initially be set to None because we do not know the actual value before setting it first time
+        self._expect_responses    = None  # Default is True
+        self._response_timeout    = None  # Default is 32 (equals 205 ms)
+        self._header              = None  # Default is 7DF
+        self._can_auto_format     = None  # Default is True
+        self._can_monitor_mode    = None  # Default is 0
+
+        # Settings related to serial connection
         self._default_timeout = timeout if timeout != None else 10  # Seconds
         self._port = serial.Serial(parity   = serial.PARITY_NONE,
                                    stopbits = 1,
@@ -257,11 +267,11 @@ class ELM327(object):
         try:
 
             # Check if ready
-            res = self.send(b"ATI", delay=1, filtering=False)  # Wait 1 second for ELM to initialize
+            res = self.send(b"ATI", delay=1, raw=True)  # Wait 1 second for ELM to initialize
             # Return data can be junk, so don't bother checking
 
             # Determine if echo is on or off
-            res = self.send(b"ATI", filtering=False)
+            res = self.send(b"ATI", raw=True)
             self._echo_off = not self._has_message(res, "ATI")
 
             # Load current settings from programmable parameters
@@ -542,19 +552,13 @@ class ELM327(object):
         """
 
         # Ensure OBD header is set
-        if header == None:
-            if self._header != self.OBD_HEADER:
-                self.set_header(self.OBD_HEADER)
-        elif self._header != header:
-            self.set_header(header)
+        self.set_header(header or self.OBD_HEADER)
 
         # Ensure CAN automatic formatting is enabled
-        if not self._can_auto_format:
-            self.set_can_auto_format(True)
+        self.set_can_auto_format(True)
 
         # Ensure responses are turned on
-        if not self._expect_responses:
-            self.set_expect_responses(True)
+        self.set_expect_responses(True)
 
         lines = self.send(cmd, read_timeout=read_timeout)
 
@@ -566,7 +570,7 @@ class ELM327(object):
         return lines
 
 
-    def send(self, cmd, delay=None, filtering=True, read_timeout=None, interrupt_delay=None):
+    def send(self, cmd, delay=None, read_timeout=None, interrupt_delay=None, raw=False):
         """
         Send raw command string.
 
@@ -588,7 +592,7 @@ class ELM327(object):
         if logger.isEnabledFor(logging.DEBUG) and not lines:
             logger.debug("Got no response on command: {:}".format(cmd))
 
-        if not filtering:
+        if raw:
             return lines
 
         # Filter out echo if present
@@ -818,6 +822,19 @@ class ELM327(object):
         return True
 
 
+    def _interrupt(self, ready_wait=True):
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Write to interrupt: " + repr(self.INTERRUPT))
+
+        self._port.flushInput()  # Dump everything in the input buffer
+        self._port.write(self.INTERRUPT)  # Write an interrupt character
+        self._port.flush()  # Wait for the output buffer to finish transmitting
+
+        # Wait for ready prompt
+        if ready_wait:
+            self._read()
+
+
     def _write(self, cmd):
         """
         Low-level function to write a string to the port.
@@ -825,6 +842,15 @@ class ELM327(object):
 
         if not self._port or not self._port.is_open:
             raise ELM327Error("Cannot write when serial connection is not open")
+
+        # Ensure in interactive state before writing any command
+        if self._state != self.STATE_INTERACTIVE:
+            try:
+                self._interrupt()
+            finally:
+
+                # Always go to interactive state
+                self._state = self.STATE_INTERACTIVE
 
         cmd += b"\r"  # Terminate with carriage return in accordance with ELM327 and STN11XX specifications
         
@@ -872,17 +898,16 @@ class ELM327(object):
 
                 buffer.extend(data)
 
-                # End on chevron + carriage return (ELM prompt characters)
+                # End on chevron + carriage return (ELM prompt character)
                 if buffer.endswith(self.PROMPT):
                     break
 
                 # Check if it is time to send an interrupt character
                 if interrupt_delay != None and (timer() - start) >= interrupt_delay:
-                    logger.info("Sending interrupt character during read")
-
-                    self._port.write(b"\x7F")
                     interrupt_delay = None
 
+                    self._interrupt(ready_wait=False)
+                    
             # Log, and remove the "bytearray(   ...   )" part
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug("Read: " + repr(buffer)[10:-1])
@@ -907,6 +932,43 @@ class ELM327(object):
             # Restore default timeout if changed
             if self._port.timeout != self._default_timeout:
                 self._port.timeout = self._default_timeout
+
+
+    def _read_line(self, wait=True):
+        """
+        Low-level function to read a single line.
+        """
+
+        if not self._port or not self._port.is_open:
+            raise ELM327Error("Cannot read line when serial connection is not open")
+
+        # Decide to skip or continue and wait if no data pending
+        if not wait and not self._port.in_waiting:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Skipping read line because no data is currently pending on serial port")
+
+            return
+
+        # Wait for read of entire line or until timeout
+        res = self._port.read_until(terminator="\r")
+        if not res:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("No line could be read on serial port within timeout of {:d} second(s)".format(self._port.timeout))
+
+            return
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Read line: " + repr(res))
+
+        if res == self.PROMPT:
+            logger.warning("No more lines available to read on serial port - interface returned to interactive state, if not already")
+
+            # We know for sure that we are in interactive state because of the prompt character
+            self._state = self.STATE_INTERACTIVE
+
+            return
+
+        return res.strip()
 
 
     def _is_ok(self, lines, expect_echo=False):
