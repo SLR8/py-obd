@@ -292,7 +292,7 @@ class OBD(object):
         return cmd(messages) # compute a response object
 
 
-    def send(self, msg_string, header=None, auto_format=False, expect_response=False, echo=False):
+    def send(self, msg_string, header=None, auto_format=False, expect_response=False, raw_response=False, echo=False):
         """
             Low-level function that sends raw messages on bus.
         """
@@ -316,9 +316,9 @@ class OBD(object):
 
         try:
             if isinstance(expect_response, bool):  # NOTE: In Python 'bool' is child of 'int'
-                lines = self.interface.send(msg_string)
+                lines = self.interface.send(msg_string, raw_response=raw_response)
             else:
-                lines = self.interface.send(msg_string + " " + str(expect_response))  # Specify the number of expected frames (to avoid waiting for timeout)
+                lines = self.interface.send(msg_string + " " + str(expect_response), raw_response=raw_response)  # Specify the number of expected frames (to avoid waiting for timeout)
 
             # If echo prepend request message including header
             if echo:

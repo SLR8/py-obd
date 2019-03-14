@@ -267,11 +267,11 @@ class ELM327(object):
         try:
 
             # Check if ready
-            res = self.send(b"ATI", delay=1, raw=True)  # Wait 1 second for ELM to initialize
+            res = self.send(b"ATI", delay=1, raw_response=True)  # Wait 1 second for ELM to initialize
             # Return data can be junk, so don't bother checking
 
             # Determine if echo is on or off
-            res = self.send(b"ATI", raw=True)
+            res = self.send(b"ATI", raw_response=True)
             self._echo_off = not self._has_message(res, "ATI")
 
             # Load current settings from programmable parameters
@@ -570,7 +570,7 @@ class ELM327(object):
         return lines
 
 
-    def send(self, cmd, delay=None, read_timeout=None, interrupt_delay=None, raw=False):
+    def send(self, cmd, delay=None, read_timeout=None, interrupt_delay=None, raw_response=False):
         """
         Send raw command string.
 
@@ -592,7 +592,7 @@ class ELM327(object):
         if logger.isEnabledFor(logging.DEBUG) and not lines:
             logger.debug("Got no response on command: {:}".format(cmd))
 
-        if raw:
+        if raw_response:
             return lines
 
         # Filter out echo if present
