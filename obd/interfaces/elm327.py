@@ -560,7 +560,7 @@ class ELM327(object):
         # Ensure responses are turned on
         self.set_expect_responses(True)
 
-        lines = self.send(cmd, read_timeout=read_timeout)
+        lines = self.send(cmd, read_timeout=read_timeout, raw_response=not parse)
 
         # Parse using protocol if requested
         if parse:
