@@ -62,7 +62,10 @@ class OBD(object):
 
         # Try to load the car's supported commands
         if load_commands:
-            self.__load_commands()
+            try:
+                self.__load_commands()
+            except:
+                logger.exception("Unable to load OBD commands")
 
         logger.debug("===================================================================")
 
