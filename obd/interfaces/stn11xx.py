@@ -377,7 +377,10 @@ class STN11XX(ELM327):
 
             # Check if limit has been reached
             if limit and count >= limit:
-                logger.warning("Read limit of {:} line(s) reached - this may indicate that more data is being produced than can be handled".format(limit))
+                if wait:
+                    logger.info("Read limit of {:} line(s) reached".format(limit))
+                else:
+                    logger.warning("Read limit of {:} line(s) reached - this may indicate that more data is being produced than can be handled".format(limit))
 
                 break
 
