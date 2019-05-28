@@ -247,7 +247,7 @@ class STN11XX(ELM327):
             return
 
         # Tell STN1XX to switch to new baudrate
-        self._write(b"STSBR" + str(baudrate).encode())
+        self._write("STSBR" + str(baudrate))
         logger.info("Changed baudrate of serial connection from '{:}' to '{:}'".format(self._port.baudrate, baudrate))
 
         super(STN11XX, self).set_baudrate(baudrate)
@@ -266,7 +266,7 @@ class STN11XX(ELM327):
         ret = super(STN11XX, self).set_protocol(ident, **kwargs)
 
         # Always determine current protocol baudrate
-        res = self.send(b"STPBRR")
+        res = self.send("STPBRR")
         self._protocol.baudrate = int(next(iter(res), "0"))
 
         # Check if STN baudrate is lower than protocol baudrate
@@ -303,7 +303,7 @@ class STN11XX(ELM327):
         if value == self._can_monitor_mode:
             return
 
-        res = self.send(b"STCMM" + str(value).encode())
+        res = self.send("STCMM" + str(value))
         if not self._is_ok(res):
             raise STN11XXError("Invalid response when setting CAN monitoring mode '{:}': {:}".format(value, res))
 
@@ -464,18 +464,18 @@ class STN11XX(ELM327):
             return super(STN11XX, self)._manual_protocol(ident, verify=verify)
 
         # Change protocol
-        res = self.send(b"STP" + ident.encode())
+        res = self.send("STP" + ident)
         if not self._is_ok(res):
             raise STN11XXError("Invalid response when manually changing to protocol '{:}': {:}".format(ident, res))
 
         # Verify protocol changed
-        res = self.send(b"STPR")
+        res = self.send("STPR")
         if not self._has_message(res, ident):
             raise STN11XXError("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(ident, res))
 
         # Also set protocol baudrate if specified
         if baudrate != None:
-            res = self.send(b"STPBR" + str(baudrate).encode())
+            res = self.send("STPBR" + str(baudrate))
             if not self._is_ok(res,):
                 raise STN11XXError("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, ident, res))
 

@@ -267,11 +267,11 @@ class ELM327(object):
         try:
 
             # Check if ready
-            res = self.send(b"ATI", delay=1, raw_response=True)  # Wait 1 second for ELM to initialize
+            res = self.send("ATI", delay=1, raw_response=True)  # Wait 1 second for ELM to initialize
             # Return data can be junk, so don't bother checking
 
             # Determine if echo is on or off
-            res = self.send(b"ATI", raw_response=True)
+            res = self.send("ATI", raw_response=True)
             self._echo_off = not self._has_message(res, "ATI")
 
             # Load current settings from programmable parameters
@@ -361,7 +361,7 @@ class ELM327(object):
         Soft reset that keeps the user selected baud rate.
         """
 
-        self.send(b"ATWS")
+        self.send("ATWS")
 
 
     def reset(self):
@@ -369,7 +369,7 @@ class ELM327(object):
         Full reset. Serial connection is closed and re-opened.
         """
 
-        self.send(b"ATZ")
+        self.send("ATZ")
         self.reopen()
 
 
@@ -475,7 +475,7 @@ class ELM327(object):
         if value == self._expect_responses:
             return
 
-        res = self.send(b"ATR" + str(int(value)).encode())
+        res = self.send("ATR" + str(int(value)))
         if not self._is_ok(res):
             raise ELM327Error("Invalid response when setting responses '{:}': {:}".format(value, res))
 
@@ -493,7 +493,7 @@ class ELM327(object):
         if value == self._response_timeout:
             return
 
-        res = self.send(b"ATST" + str(int(value)).encode())
+        res = self.send("ATST" + str(int(value)))
         if not self._is_ok(res):
             raise ELM327Error("Invalid response when setting response timeout '{:}': {:}".format(value, res))
 
@@ -511,7 +511,7 @@ class ELM327(object):
         if value == self._header:
             return
 
-        res = self.send(b"ATSH" + value.encode())
+        res = self.send("ATSH" + value)
         if not self._is_ok(res):
             raise ELM327Error("Invalid response when setting header '{:}': {:}".format(value, res))
 
@@ -529,7 +529,7 @@ class ELM327(object):
         if value == self._can_auto_format:
             return
 
-        res = self.send(b"ATCAF" + str(int(value)).encode())
+        res = self.send("ATCAF" + str(int(value)))
         if not self._is_ok(res):
             raise ELM327Error("Invalid response when setting CAN automatic formatting '{:}': {:}".format(value, res))
 
@@ -655,7 +655,7 @@ class ELM327(object):
         ret = []
 
         ignore_lines = ["SEARCHING...", "NO DATA"]
-        for line in self.query(b"0100", parse=False, read_timeout=10):
+        for line in self.query("0100", parse=False, read_timeout=10):
 
             # Skip ignore lines
             if line in ignore_lines:
@@ -693,7 +693,7 @@ class ELM327(object):
     def _manual_protocol(self, ident, verify=True, **kwargs):
 
         # Change protocol
-        res = self.send(b"ATTP" + ident.encode())
+        res = self.send("ATTP" + ident)
         if not self._is_ok(res):
             raise ELM327Error("Invalid response when manually changing to protocol '{:}': {:}".format(ident, res))
 
@@ -701,7 +701,7 @@ class ELM327(object):
         res_0100 = self._verify_protocol(ident, test=not verify)
 
         # Verify protocol changed
-        res = self.send(b"ATDPN")
+        res = self.send("ATDPN")
         if not self._has_message(res, ident):
             raise ELM327Error("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(ident, res))
 
@@ -716,7 +716,7 @@ class ELM327(object):
         """
 
         # Set auto protocol mode
-        res = self.send(b"ATSP0")
+        res = self.send("ATSP0")
         if not self._is_ok(res):
             raise ELM327Error("Invalid response when setting auto protocol mode: {:}".format(res))
 
@@ -724,7 +724,7 @@ class ELM327(object):
         res_0100 = self._verify_protocol("auto", test=not verify)
 
         # Get protocol number
-        res = self.send(b"ATDPN")
+        res = self.send("ATDPN")
         if len(res) != 1:
             logger.error("Invalid response when getting protocol number: {:}".format(res))
             raise ELM327Error("Failed to retrieve current protocol after searching for protocol automatically")
@@ -767,7 +767,7 @@ class ELM327(object):
 
         ret = {}
 
-        lines = self.send(b"ATPPS")
+        lines = self.send("ATPPS")
         for line in lines:
             for param in line.split("  "):
                 match = re.match("^(?P<id>[0-9A-F]{2}):(?P<value>[0-9A-F]{2}) (?P<state>[N|F]{1})$", param)
@@ -785,14 +785,14 @@ class ELM327(object):
         Sets value of a programmable parameter and enables it if requested.
         """
 
-        res = self.send(b"ATPP{:s} SV{:s}".format(id, value))
+        res = self.send("ATPP{:s} SV{:s}".format(id, value))
         if self._is_ok(res):
             logger.info("Updated programmable parameter '{:}' value '{:}'".format(id, value))
         else:
             raise ELM327Error("Failed to set programmable parameter '{:}' value '{:}': {:}".format(id, value, res))
 
         if enable is not None:
-            res = self.send(b"ATPP{:s} {:s}".format(id, "ON" if enable else "OFF"))
+            res = self.send("ATPP{:s} {:s}".format(id, "ON" if enable else "OFF"))
             if self._is_ok(res):
                 logger.info("{:} programmable parameter '{:}'".format("Enabled" if enable else "Disabled", id))
             else:
@@ -852,13 +852,13 @@ class ELM327(object):
                 # Always go to interactive state
                 self._state = self.STATE_INTERACTIVE
 
-        cmd += b"\r"  # Terminate with carriage return in accordance with ELM327 and STN11XX specifications
+        cmd += "\r"  # Terminate with carriage return in accordance with ELM327 and STN11XX specifications
         
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Write: " + repr(cmd))
 
         self._port.flushInput()  # Dump everything in the input buffer
-        self._port.write(cmd)  # Turn the string into bytes and write
+        self._port.write(cmd.encode())  # Turn the string into bytes and write
         self._port.flush()  # Wait for the output buffer to finish transmitting
 
 
