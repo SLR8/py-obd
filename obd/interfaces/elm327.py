@@ -200,6 +200,7 @@ class ELM327(object):
     STATE_MONITOR = "MONITOR"
     STATE_MONITOR_ALL = "MONITOR_ALL"
 
+
     def __init__(self, port, timeout=None, status_callback=None):
         """
         Initializes interface instance.
@@ -214,13 +215,9 @@ class ELM327(object):
         self._echo_off            = False
         self._print_headers       = False
 
-        # Settings that can be changed runtime
-        # IMPORTANT: Must initially be set to None because we do not know the actual value before setting it first time
-        self._expect_responses    = None  # Default is True
-        self._response_timeout    = None  # Default is 32 (equals 205 ms)
-        self._header              = None  # Default is 7DF
-        self._can_auto_format     = None  # Default is True
-        self._can_monitor_mode    = None  # Default is 0
+        # Cached volatile settings that have been changed runtime
+        # IMPORTANT: All must initially be set to empty because we do not know the actual value before setting it first time.
+        self._runtime_settings    = {}
 
         # Settings related to serial connection
         self._default_timeout = timeout if timeout != None else 10  # Seconds
@@ -350,6 +347,10 @@ class ELM327(object):
         """
 
         self.close()
+
+        # Clear any cached runtime settings
+        self._runtime_settings = {}
+
         self.open(
             self._port.baudrate if self._port else None,
             self._protocol.ID if self._protocol else None
@@ -361,7 +362,12 @@ class ELM327(object):
         Soft reset that keeps the user selected baud rate.
         """
 
-        self.send("ATWS")
+        try:
+            self.send("ATWS")
+        finally:
+
+            # Clear any cached runtime settings
+            self._runtime_settings = {}
 
 
     def reset(self):
@@ -469,10 +475,10 @@ class ELM327(object):
 
     def set_expect_responses(self, value):
         """
-        Turn responses on or off
+        Turn responses on or off. Default is True.
         """
 
-        if value == self._expect_responses:
+        if value == self._runtime_settings.get("expect_responses", None):
             return
 
         res = self.send("ATR" + str(int(value)))
@@ -480,17 +486,17 @@ class ELM327(object):
             raise ELM327Error("Invalid response when setting responses '{:}': {:}".format(value, res))
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Changed responses from '{:}' to '{:}'".format(self._expect_responses, value))
+            logger.debug("Changed responses from '{:}' to '{:}'".format(self._runtime_settings.get("expect_responses", None), value))
 
-        self._expect_responses = value
+        self._runtime_settings["expect_responses"] = value
 
 
     def set_response_timeout(self, value):
         """
-        Sets timeout to value x 4 ms
+        Sets timeout to value x 4 ms. Default is 32 (equals 205 ms).
         """
 
-        if value == self._response_timeout:
+        if value == self._runtime_settings.get("response_timeout", None):
             return
 
         res = self.send("ATST" + str(int(value)))
@@ -498,17 +504,17 @@ class ELM327(object):
             raise ELM327Error("Invalid response when setting response timeout '{:}': {:}".format(value, res))
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Changed response timeout from '{:}' to '{:}'".format(self._response_timeout, value))
+            logger.debug("Changed response timeout from '{:}' to '{:}'".format(self._runtime_settings.get("response_timeout", None), value))
 
-        self._response_timeout = value
+        self._runtime_settings["response_timeout"] = value
 
 
     def set_header(self, value):
         """
-        Set header value to use when sending request(s).
+        Set header value to use when sending request(s). Default is '7DF'.
         """
 
-        if value == self._header:
+        if value == self._runtime_settings.get("header", None):
             return
 
         res = self.send("ATSH" + value)
@@ -516,17 +522,17 @@ class ELM327(object):
             raise ELM327Error("Invalid response when setting header '{:}': {:}".format(value, res))
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Changed header from '{:}' to '{:}'".format(self._header, value))
+            logger.debug("Changed header from '{:}' to '{:}'".format(self._runtime_settings.get("header", None), value))
 
-        self._header = value
+        self._runtime_settings["header"] = value
 
 
     def set_can_auto_format(self, value):
         """
-        Enable/disable CAN automatic formatting.
+        Enable/disable CAN automatic formatting. Default is True.
         """
 
-        if value == self._can_auto_format:
+        if value == self._runtime_settings.get("can_auto_format", None):
             return
 
         res = self.send("ATCAF" + str(int(value)))
@@ -534,9 +540,9 @@ class ELM327(object):
             raise ELM327Error("Invalid response when setting CAN automatic formatting '{:}': {:}".format(value, res))
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Changed CAN automatic formatting from '{:}' to '{:}'".format(self._can_auto_format, value))
+            logger.debug("Changed CAN automatic formatting from '{:}' to '{:}'".format(self._runtime_settings.get("can_auto_format", None), value))
 
-        self._can_auto_format = value
+        self._runtime_settings["can_auto_format"] = value
 
 
     def query(self, cmd, header=None, parse=True, read_timeout=None):

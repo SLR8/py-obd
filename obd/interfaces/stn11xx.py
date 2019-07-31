@@ -292,7 +292,7 @@ class STN11XX(ELM327):
 
     def set_can_monitor_mode(self, value):
         """
-        Set CAN monitoring mode.
+        Set CAN monitoring mode. Default is 0.
 
         Mode options:
             0 = Receive only - no CAN ACKs (default)
@@ -300,15 +300,16 @@ class STN11XX(ELM327):
             2 = Receive all frames, including frames with errors - no CAN ACKs
         """
 
-        if value == self._can_monitor_mode:
+        if value == self._runtime_settings.get("can_monitor_mode", None):
             return
 
         res = self.send("STCMM" + str(value))
         if not self._is_ok(res):
             raise STN11XXError("Invalid response when setting CAN monitoring mode '{:}': {:}".format(value, res))
 
-        logger.info("Changed CAN monitoring mode from '{:}' to '{:}'".format(self._can_monitor_mode, value))
-        self._can_monitor_mode = value
+        logger.info("Changed CAN monitoring mode from '{:}' to '{:}'".format(self._runtime_settings.get("can_monitor_mode", None), value))
+
+        self._runtime_settings["can_monitor_mode"] = value
 
 
     def monitor(self, duration=10, mode=0, auto_format=False, filtering=False):
