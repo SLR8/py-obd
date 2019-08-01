@@ -446,6 +446,8 @@ class ELM327(object):
 
             raise
 
+        return self._protocol
+
 
     def set_baudrate(self, baudrate):
         if baudrate == None:
