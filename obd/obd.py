@@ -304,9 +304,7 @@ class OBD(object):
             raise OBDError("Not connected to interface")
 
         # Set given header or use default
-        if header == None:
-            header = ELM327.OBD_HEADER
-        self.interface.set_header(str(header))
+        self.interface.set_header(header)
 
         # Set CAN automatic formatting
         self.interface.set_can_auto_format(auto_format)
@@ -325,7 +323,7 @@ class OBD(object):
 
             # If echo prepend request message including header
             if echo:
-                lines.insert(0, header + " " + msg_string)
+                lines.insert(0, msg_string if header == None else "{:} {:}".format(header, msg_string))
 
         finally:
 

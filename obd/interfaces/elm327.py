@@ -188,8 +188,8 @@ class ELM327(object):
     # going to be less picky about the time required to detect it.
     TRY_BAUDRATES = [38400, 9600, 230400, 115200, 57600, 38400, 19200]
 
-    # OBD functional address
-    OBD_HEADER = "7DF" 
+    # OBD-II functional address
+    OBDII_HEADER = "7DF" 
 
     # Programmable parameter IDs
     PP_ATH = "01"
@@ -215,8 +215,7 @@ class ELM327(object):
         self._echo_off            = False
         self._print_headers       = False
 
-        # Cached volatile settings that have been changed runtime
-        # IMPORTANT: All must initially be set to empty because we do not know the actual value before setting it first time.
+        # Cached settings that have been changed runtime
         self._runtime_settings    = {}
 
         # Settings related to serial connection
@@ -274,23 +273,27 @@ class ELM327(object):
             # Load current settings from programmable parameters
             params = self._get_pps()
 
-            warm_reset = False
+            has_changed = False
 
             # Set echo on/off
             if self._ensure_pp(params[self.PP_ATE], "FF" if echo_off else "00", default="00"):
-                warm_reset = True
+                has_changed = True
             # Echo has maybe been changed manually (using ATE0/1) - reset to load setting from PP
             elif self._echo_off != echo_off:
-                warm_reset = True
+                has_changed = True
 
             # Enable/disable printing of headers
             if self._ensure_pp(params[self.PP_ATH], "00" if print_headers else "FF", default="FF"):
-                warm_reset = True
+                has_changed = True
 
-            # Perform warm reset if changes have been made
-            if warm_reset:
-                logger.info("Performing warm reset after updating programmable parameter(s)")
-                self.warm_reset()
+            if has_changed:
+                logger.info("Changes have been made to programmable parameter(s)")
+            
+            # Always perform soft reset to:
+            #   - Restore all default runtime settings
+            #   - Reload changed programmable parameter(s)
+            #   - Avoid any continuing protocol detection/verification problems
+            self.warm_reset()
 
             # Finally update setting variables with possible new values
             self._echo_off = echo_off
@@ -347,9 +350,6 @@ class ELM327(object):
         """
 
         self.close()
-
-        # Clear any cached runtime settings
-        self._runtime_settings = {}
 
         self.open(
             self._port.baudrate if self._port else None,
@@ -480,7 +480,7 @@ class ELM327(object):
         Turn responses on or off. Default is True.
         """
 
-        if value == self._runtime_settings.get("expect_responses", None):
+        if value == self._runtime_settings.get("expect_responses", True):
             return
 
         res = self.send("ATR" + str(int(value)))
@@ -498,10 +498,10 @@ class ELM327(object):
         Sets timeout to value x 4 ms. Default is 32 (equals 205 ms).
         """
 
-        if value == self._runtime_settings.get("response_timeout", None):
+        if value == self._runtime_settings.get("response_timeout", 32):
             return
 
-        res = self.send("ATST" + str(int(value)))
+        res = self.send("ATST" + str(value))
         if not self._is_ok(res):
             raise ELM327Error("Invalid response when setting response timeout '{:}': {:}".format(value, res))
 
@@ -513,10 +513,18 @@ class ELM327(object):
 
     def set_header(self, value):
         """
-        Set header value to use when sending request(s). Default is '7DF'.
+        Set header value to use when sending request(s). For OBD-II CAN protocols default is '7DF'.
         """
 
-        if value == self._runtime_settings.get("header", None):
+        default = self.OBDII_HEADER if isinstance(self._protocol, CANProtocol) else None
+
+        value = default if value == None else str(value).upper()
+        if value == self._runtime_settings.get("header", default):
+            return
+        elif value == None:
+            logger.warning("Performing warm reset to force default header")
+            self.warm_reset()
+
             return
 
         res = self.send("ATSH" + value)
@@ -534,7 +542,7 @@ class ELM327(object):
         Enable/disable CAN automatic formatting. Default is True.
         """
 
-        if value == self._runtime_settings.get("can_auto_format", None):
+        if value == self._runtime_settings.get("can_auto_format", True):
             return
 
         res = self.send("ATCAF" + str(int(value)))
@@ -559,8 +567,8 @@ class ELM327(object):
         Returns a list of parsed Message objects or raw response lines.
         """
 
-        # Ensure OBD header is set
-        self.set_header(header or self.OBD_HEADER)
+        # Ensure header is set
+        self.set_header(header)
 
         # Ensure CAN automatic formatting is enabled
         self.set_can_auto_format(True)
