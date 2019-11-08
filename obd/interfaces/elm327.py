@@ -129,7 +129,7 @@ class ELM327(object):
     INTERRUPT = b"\x7F"
     OK = b"OK"
     ERRORS = {
-        "?":                  "Unsupported command",
+        "?":                  "Invalid/unsupported command",
         "BUS BUSY":           "Too much activity on bus",
         "BUS ERROR":          "Invalid signal detected on bus",
         "CAN ERROR":          "CAN sending or receiving failed",
@@ -387,6 +387,10 @@ class ELM327(object):
         return self._status
 
 
+    def runtime_settings(self):
+        return self._runtime_settings
+
+
     def supported_protocols(self):
         return self._SUPPORTED_PROTOCOLS
 
@@ -483,9 +487,13 @@ class ELM327(object):
         if value == self._runtime_settings.get("expect_responses", True):
             return
 
-        res = self.send("ATR" + str(int(value)))
+        try:
+            res = self.send("ATR" + str(int(value)))
+        except ELM327Error as err:
+            raise ELM327Error("Unable to set expect responses '{:}': {:}".format(value, err))
+
         if not self._is_ok(res):
-            raise ELM327Error("Invalid response when setting responses '{:}': {:}".format(value, res))
+            raise ELM327Error("Invalid response when setting expect responses '{:}': {:}".format(value, res))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Changed responses from '{:}' to '{:}'".format(self._runtime_settings.get("expect_responses", None), value))
@@ -495,13 +503,17 @@ class ELM327(object):
 
     def set_response_timeout(self, value):
         """
-        Sets timeout to value x 4 ms. Default is 32 (equals 205 ms).
+        Set timeout to value x 4 ms. Default is 32 (equals 205 ms).
         """
 
         if value == self._runtime_settings.get("response_timeout", 32):
             return
 
-        res = self.send("ATST" + str(value))
+        try:
+            res = self.send("ATST" + str(value))
+        except ELM327Error as err:
+            raise ELM327Error("Unable to set response timeout '{:}': {:}".format(value, err))
+
         if not self._is_ok(res):
             raise ELM327Error("Invalid response when setting response timeout '{:}': {:}".format(value, res))
 
@@ -509,6 +521,35 @@ class ELM327(object):
             logger.debug("Changed response timeout from '{:}' to '{:}'".format(self._runtime_settings.get("response_timeout", None), value))
 
         self._runtime_settings["response_timeout"] = value
+
+
+    def set_adaptive_timing(self, value):
+        """
+        Set adaptive timing mode. Default is 1.
+        Sometimes, a single OBD requests results in multiple response frames.
+        The time between frames varies significantly depending on the vehicle year, make, and model – from as low as 5 ms up to 100 ms.
+
+        Mode options:
+            0 = Adaptive timing off (fixed timeout).
+            1 = Adaptive timing on, normal mode. This is the default option.
+            2 = Adaptive timing on, aggressive mode. This option may increase throughput on slower connections, at the expense of slightly increasing the risk of missing frames.
+        """
+
+        if value == self._runtime_settings.get("adaptive_timing", 1):
+            return
+
+        try:
+            res = self.send("ATAT" + str(value))
+        except ELM327Error as err:
+            raise ELM327Error("Unable to set adaptive timing '{:}': {:}".format(value, err))
+
+        if not self._is_ok(res):
+            raise ELM327Error("Invalid response when setting adaptive timing '{:}': {:}".format(value, res))
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Changed adaptive timing from '{:}' to '{:}'".format(self._runtime_settings.get("adaptive_timing", None), value))
+
+        self._runtime_settings["adaptive_timing"] = value
 
 
     def set_header(self, value):
@@ -527,7 +568,11 @@ class ELM327(object):
 
             return
 
-        res = self.send("ATSH" + value)
+        try:
+            res = self.send("ATSH" + value)
+        except ELM327Error as err:
+            raise ELM327Error("Unable to set header '{:}': {:}".format(value, err))
+
         if not self._is_ok(res):
             raise ELM327Error("Invalid response when setting header '{:}': {:}".format(value, res))
 
@@ -545,7 +590,11 @@ class ELM327(object):
         if value == self._runtime_settings.get("can_auto_format", True):
             return
 
-        res = self.send("ATCAF" + str(int(value)))
+        try:
+            res = self.send("ATCAF" + str(int(value)))
+        except ELM327Error as err:
+            raise ELM327Error("Unable to set CAN automatic formatting '{:}': {:}".format(value, err))
+
         if not self._is_ok(res):
             raise ELM327Error("Invalid response when setting CAN automatic formatting '{:}': {:}".format(value, res))
 
@@ -553,6 +602,34 @@ class ELM327(object):
             logger.debug("Changed CAN automatic formatting from '{:}' to '{:}'".format(self._runtime_settings.get("can_auto_format", None), value))
 
         self._runtime_settings["can_auto_format"] = value
+
+
+    def set_can_extended_address(self, value):
+        """
+        Use CAN extended address.
+        """
+
+        if value == self._runtime_settings.get("can_extended_address", None):
+            return
+
+        if value:
+            try:
+                res = self.send("ATCEA" + str(value))
+            except ELM327Error as err:
+                raise ELM327Error("Unable to set CAN extended address '{:}': {:}".format(value, err))
+        else:
+            try:
+                res = self.send("ATCEA")
+            except ELM327Error as err:
+                raise ELM327Error("Unable to clear CAN extended addresses: {:}".format(err))
+            
+        if not self._is_ok(res):
+            raise ELM327Error("Invalid response when setting CAN extended address '{:}': {:}".format(value, res))
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Changed CAN extended address from '{:}' to '{:}'".format(self._runtime_settings.get("can_extended_address", None), value))
+
+        self._runtime_settings["can_extended_address"] = value
 
 
     def query(self, cmd, header=None, parse=True, read_timeout=None):
