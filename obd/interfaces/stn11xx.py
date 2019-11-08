@@ -295,19 +295,24 @@ class STN11XX(ELM327):
         Set CAN monitoring mode. Default is 0.
 
         Mode options:
-            0 = Receive only - no CAN ACKs (default)
-            1 = Normal node - with CAN ACKs
-            2 = Receive all frames, including frames with errors - no CAN ACKs
+            0 = Receive only - no CAN ACKs (default).
+            1 = Normal node - with CAN ACKs.
+            2 = Receive all frames, including frames with errors - no CAN ACKs.
         """
 
-        if value == self._runtime_settings.get("can_monitor_mode", None):
+        if value == self._runtime_settings.get("can_monitor_mode", 0):
             return
 
-        res = self.send("STCMM" + str(value))
+        try:
+            res = self.send("STCMM" + str(value))
+        except ELM327Error as err:
+            raise STN11XXError("Unable to set CAN monitoring mode '{:}': {:}".format(value, err))
+
         if not self._is_ok(res):
             raise STN11XXError("Invalid response when setting CAN monitoring mode '{:}': {:}".format(value, res))
 
-        logger.info("Changed CAN monitoring mode from '{:}' to '{:}'".format(self._runtime_settings.get("can_monitor_mode", None), value))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Changed CAN monitoring mode from '{:}' to '{:}'".format(self._runtime_settings.get("can_monitor_mode", None), value))
 
         self._runtime_settings["can_monitor_mode"] = value
 
@@ -395,6 +400,8 @@ class STN11XX(ELM327):
 
 
     def list_filters(self, type=None):
+        # TODO HN: Rewrite to use self._runtime_settings
+
         if type != None:
             type = type.upper()
 
@@ -405,6 +412,8 @@ class STN11XX(ELM327):
 
 
     def add_filter(self, type, pattern, mask):
+        # TODO HN: Rewrite to use self._runtime_settings
+
         if type != None:
             type = type.upper()
 
@@ -430,6 +439,8 @@ class STN11XX(ELM327):
 
 
     def clear_filters(self, type=None):
+        # TODO HN: Rewrite to use self._runtime_settings
+
         if type != None:
             type = type.upper()
 
@@ -456,6 +467,68 @@ class STN11XX(ELM327):
                 raise STN11XXError("Failed to clear '{:}' filters: {:}".format(self.FILTER_TYPE_FLOW, res))
 
             self._filters = list(filter(lambda f: f["type"] != self.FILTER_TYPE_FLOW, self._filters))
+
+
+    def can_flow_control_filters(self, clear=False, add=None):
+
+        if clear:
+
+            try:
+                res = self.send("STFFCC")
+            except ELM327Error as err:
+                raise STN11XXError("Unable to clear CAN flow control filters: {:}".format(err))
+
+            if not self._is_ok(res):
+                raise STN11XXError("Invalid response when clearing CAN flow control filters: {:}".format(res))
+
+            self._runtime_settings["can_flow_control_filters"] = []
+
+        if add:
+            add = str(add).replace(" ", "").upper()
+            if not add in self._runtime_settings.get("can_flow_control_filters", []):
+
+                try:                
+                    res = self.send("STFFCA{:}".format(add))
+                except ELM327Error as err:
+                    raise STN11XXError("Unable to add CAN flow control filter '{:}': {:}".format(add, err))
+
+                if not self._is_ok(res):
+                    raise STN11XXError("Invalid response when adding CAN flow control filter '{:}': {:}".format(add, res))
+
+                self._runtime_settings.setdefault("can_flow_control_filters", []).append(add)
+
+        return self._runtime_settings.get("can_flow_control_filters", [])
+
+
+    def can_flow_control_id_pairs(self, clear=False, add=None):
+
+        if clear:
+
+            try:
+                res = self.send("STCFCPC")
+            except ELM327Error as err:
+                raise STN11XXError("Unable to clear CAN flow control ID pairs: {:}".format(err))
+
+            if not self._is_ok(res):
+                raise STN11XXError("Invalid response when clearing CAN flow control ID pairs: {:}".format(res))
+
+            self._runtime_settings["can_flow_control_id_pairs"] = []
+
+        if add:
+            add = str(add).replace(" ", "").upper()
+            if not add in self._runtime_settings.get("can_flow_control_id_pairs", []):
+
+                try:
+                    res = self.send("STCFCPA{:}".format(add))
+                except ELM327Error as err:
+                    raise STN11XXError("Unable to add CAN flow control ID pair '{:}': {:}".format(add, err))
+
+                if not self._is_ok(res):
+                    raise STN11XXError("Invalid response when adding CAN flow control ID pair '{:}': {:}".format(add, res))
+
+                self._runtime_settings.setdefault("can_flow_control_id_pairs", []).append(add)
+
+        return self._runtime_settings.get("can_flow_control_id_pairs", [])
 
 
     def _manual_protocol(self, ident, verify=False, baudrate=None):
