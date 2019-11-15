@@ -306,10 +306,10 @@ class STN11XX(ELM327):
         try:
             res = self.send("STCMM" + str(value))
         except ELM327Error as err:
-            raise STN11XXError("Unable to set CAN monitoring mode '{:}': {:}".format(value, err))
+            raise STN11XXError("Unable to set CAN monitoring mode '{:}': {:}".format(value, err), code=err.code)
 
         if not self._is_ok(res):
-            raise STN11XXError("Invalid response when setting CAN monitoring mode '{:}': {:}".format(value, res))
+            raise STN11XXError("Invalid response when setting CAN monitoring mode '{:}': {:}".format(value, res), code=self._last(res))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Changed CAN monitoring mode from '{:}' to '{:}'".format(self._runtime_settings.get("can_monitor_mode", None), value))
@@ -429,7 +429,7 @@ class STN11XX(ELM327):
 
         res = self.send("{:} {:},{:}".format(cmd, pattern, mask))
         if not self._is_ok(res):
-            raise STN11XXError("Failed to add '{:}' filter: {:}".format(type, res))
+            raise STN11XXError("Failed to add '{:}' filter: {:}".format(type, res), code=self._last(res))
 
         self._filters.append({
                 "type": type,
@@ -450,21 +450,21 @@ class STN11XX(ELM327):
         if type == None or type == self.FILTER_TYPE_PASS:
             res = self.send("STFCP")
             if not self._is_ok(res):
-                raise STN11XXError("Failed to clear '{:}' filters: {:}".format(self.FILTER_TYPE_PASS, res))
+                raise STN11XXError("Failed to clear '{:}' filters: {:}".format(self.FILTER_TYPE_PASS, res), code=self._last(res))
 
             self._filters = list(filter(lambda f: f["type"] != self.FILTER_TYPE_PASS, self._filters))
 
         if type == None or type == self.FILTER_TYPE_BLOCK:
             res = self.send("STFCB")
             if not self._is_ok(res):
-                raise STN11XXError("Failed to clear '{:}' filters: {:}".format(self.FILTER_TYPE_BLOCK, res))
+                raise STN11XXError("Failed to clear '{:}' filters: {:}".format(self.FILTER_TYPE_BLOCK, res), code=self._last(res))
 
             self._filters = list(filter(lambda f: f["type"] != self.FILTER_TYPE_BLOCK, self._filters))
 
         if type == None or type == self.FILTER_TYPE_FLOW:
             res = self.send("STFCFC")
             if not self._is_ok(res):
-                raise STN11XXError("Failed to clear '{:}' filters: {:}".format(self.FILTER_TYPE_FLOW, res))
+                raise STN11XXError("Failed to clear '{:}' filters: {:}".format(self.FILTER_TYPE_FLOW, res), code=self._last(res))
 
             self._filters = list(filter(lambda f: f["type"] != self.FILTER_TYPE_FLOW, self._filters))
 
@@ -476,10 +476,10 @@ class STN11XX(ELM327):
             try:
                 res = self.send("STFFCC")
             except ELM327Error as err:
-                raise STN11XXError("Unable to clear CAN flow control filters: {:}".format(err))
+                raise STN11XXError("Unable to clear CAN flow control filters: {:}".format(err), code=err.code)
 
             if not self._is_ok(res):
-                raise STN11XXError("Invalid response when clearing CAN flow control filters: {:}".format(res))
+                raise STN11XXError("Invalid response when clearing CAN flow control filters: {:}".format(res), code=self._last(res))
 
             self._runtime_settings["can_flow_control_filters"] = []
 
@@ -490,10 +490,10 @@ class STN11XX(ELM327):
                 try:                
                     res = self.send("STFFCA{:}".format(add))
                 except ELM327Error as err:
-                    raise STN11XXError("Unable to add CAN flow control filter '{:}': {:}".format(add, err))
+                    raise STN11XXError("Unable to add CAN flow control filter '{:}': {:}".format(add, err), code=err.code)
 
                 if not self._is_ok(res):
-                    raise STN11XXError("Invalid response when adding CAN flow control filter '{:}': {:}".format(add, res))
+                    raise STN11XXError("Invalid response when adding CAN flow control filter '{:}': {:}".format(add, res), code=self._last(res))
 
                 self._runtime_settings.setdefault("can_flow_control_filters", []).append(add)
 
@@ -507,10 +507,10 @@ class STN11XX(ELM327):
             try:
                 res = self.send("STCFCPC")
             except ELM327Error as err:
-                raise STN11XXError("Unable to clear CAN flow control ID pairs: {:}".format(err))
+                raise STN11XXError("Unable to clear CAN flow control ID pairs: {:}".format(err), code=err.code)
 
             if not self._is_ok(res):
-                raise STN11XXError("Invalid response when clearing CAN flow control ID pairs: {:}".format(res))
+                raise STN11XXError("Invalid response when clearing CAN flow control ID pairs: {:}".format(res), code=self._last(res))
 
             self._runtime_settings["can_flow_control_id_pairs"] = []
 
@@ -521,10 +521,10 @@ class STN11XX(ELM327):
                 try:
                     res = self.send("STCFCPA{:}".format(add))
                 except ELM327Error as err:
-                    raise STN11XXError("Unable to add CAN flow control ID pair '{:}': {:}".format(add, err))
+                    raise STN11XXError("Unable to add CAN flow control ID pair '{:}': {:}".format(add, err), code=err.code)
 
                 if not self._is_ok(res):
-                    raise STN11XXError("Invalid response when adding CAN flow control ID pair '{:}': {:}".format(add, res))
+                    raise STN11XXError("Invalid response when adding CAN flow control ID pair '{:}': {:}".format(add, res), code=self._last(res))
 
                 self._runtime_settings.setdefault("can_flow_control_id_pairs", []).append(add)
 
@@ -540,18 +540,18 @@ class STN11XX(ELM327):
         # Change protocol
         res = self.send("STP" + ident)
         if not self._is_ok(res):
-            raise STN11XXError("Invalid response when manually changing to protocol '{:}': {:}".format(ident, res))
+            raise STN11XXError("Invalid response when manually changing to protocol '{:}': {:}".format(ident, res), code=self._last(res))
 
         # Verify protocol changed
         res = self.send("STPR")
         if not self._has_message(res, ident):
-            raise STN11XXError("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(ident, res))
+            raise STN11XXError("Manually changed protocol '{:}' does not match currently active protocol '{:}'".format(ident, res), code=self._last(res))
 
         # Also set protocol baudrate if specified
         if baudrate != None:
             res = self.send("STPBR" + str(baudrate))
             if not self._is_ok(res,):
-                raise STN11XXError("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, ident, res))
+                raise STN11XXError("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, ident, res), code=self._last(res))
 
         # Verify if the protocol has OBD-II support
         if verify:

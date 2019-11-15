@@ -297,11 +297,15 @@ class OBD(object):
 
     def send(self, msg_string, header=None, auto_format=False, expect_response=False, raw_response=False, echo=False):
         """
-            Low-level function that sends raw messages on bus.
+            Low-level method that sends a raw message on bus.
         """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
             raise OBDError("Not connected to interface")
+
+        # Enforce no AT commands
+        if msg_string[:2].upper() in ["AT", "ST"]:
+            raise ValueError("AT and ST commands are not allowed - use 'execute' instead")
 
         # Set given header or use default
         self.interface.set_header(header)
@@ -333,23 +337,20 @@ class OBD(object):
         return lines
 
 
-    def execute(self, cmd_string):
+    def execute(self, cmd_string, raw_response=False):
         """
-            Low-level function that executes AT and ST commands.
+            Low-level method to execute an AT command on the interface.
         """
 
         if self.status() == OBDStatus.NOT_CONNECTED:
             raise OBDError("Not connected to interface")
 
-        cmd_string = cmd_string.upper()
-        if not cmd_string[:2] in ["AT", "ST"]:
-            raise ValueError("Only AT and ST commands supported")
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Executing command: %s" % str(cmd_string))
-
         try:
-            lines = self.interface.send(cmd_string)
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Executing AT command against interface: %s" % str(cmd_string))
+
+            lines = self.interface.relay(cmd_string, raw_response=raw_response)
 
         finally:
 

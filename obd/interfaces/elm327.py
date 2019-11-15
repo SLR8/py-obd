@@ -226,6 +226,26 @@ class ELM327(object):
                                    timeout  = self._default_timeout)
         self._port.port = port
 
+        self._at_command_mappings = [
+
+            # Immutable
+            (re.compile("^ATE(?P<value>[0-1])$", re.IGNORECASE),        lambda val: self._immutable_setting(not self._echo_off, int(val))),
+            (re.compile("^ATH(?P<value>[0-1])$", re.IGNORECASE),        lambda val: self._immutable_setting(self._print_headers, int(val))),
+            (re.compile("^ATS(?P<value>[0-1])$", re.IGNORECASE),        lambda val: self._immutable_setting(0, int(val))),
+
+            # Mutable
+            (re.compile("^ATAT(?P<value>[0-2])$", re.IGNORECASE),       self.set_adaptive_timing),
+            (re.compile("^ATR(?P<value>[0-1])$", re.IGNORECASE),        self.set_expect_responses),
+            (re.compile("^ATD$", re.IGNORECASE),                        self.restore_defaults),
+            (re.compile("^ATWS$", re.IGNORECASE),                       self.warm_reset),
+            (re.compile("^ATZ$", re.IGNORECASE),                        self.warm_reset),  # Do not perform hard reset            
+            (re.compile("^ATSH(?P<value>[0-9A-F]+)$", re.IGNORECASE),   self.set_header),
+            (re.compile("^ATSP(?P<value>[0-9A-C])$", re.IGNORECASE),    lambda val: self.set_protocol(None if val == "0" else val, verify=False)),
+            (re.compile("^ATST(?P<value>[0-9]{1,2})$", re.IGNORECASE),  self.set_response_timeout),
+            (re.compile("^ATCAF(?P<value>[0-1])$", re.IGNORECASE),      self.set_can_auto_format),
+            (re.compile("^ATCEA(?P<value>[0-9A-F]*)$", re.IGNORECASE),  self.set_can_extended_address),
+        ]
+
 
     def open(self, baudrate, protocol=None, echo_off=True, print_headers=True):
         """
@@ -355,6 +375,19 @@ class ELM327(object):
             self._port.baudrate if self._port else None,
             self._protocol.ID if self._protocol else None
         )
+
+
+    def restore_defaults(self):
+        """
+        Set the options to their default (or factory) settings, as when power is first applied.
+        """
+
+        res = self.send("ATD")
+        if self._is_ok(res):
+            logger.info("Default settings restored")
+
+            # Clear any cached runtime settings
+            self._runtime_settings = {}
 
 
     def warm_reset(self):
@@ -490,10 +523,10 @@ class ELM327(object):
         try:
             res = self.send("ATR" + str(int(value)))
         except ELM327Error as err:
-            raise ELM327Error("Unable to set expect responses '{:}': {:}".format(value, err))
+            raise ELM327Error("Unable to set expect responses '{:}': {:}".format(value, err), code=err.code)
 
         if not self._is_ok(res):
-            raise ELM327Error("Invalid response when setting expect responses '{:}': {:}".format(value, res))
+            raise ELM327Error("Invalid response when setting expect responses '{:}': {:}".format(value, res), code=self._last(res))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Changed responses from '{:}' to '{:}'".format(self._runtime_settings.get("expect_responses", None), value))
@@ -512,10 +545,10 @@ class ELM327(object):
         try:
             res = self.send("ATST" + str(value))
         except ELM327Error as err:
-            raise ELM327Error("Unable to set response timeout '{:}': {:}".format(value, err))
+            raise ELM327Error("Unable to set response timeout '{:}': {:}".format(value, err), code=err.code)
 
         if not self._is_ok(res):
-            raise ELM327Error("Invalid response when setting response timeout '{:}': {:}".format(value, res))
+            raise ELM327Error("Invalid response when setting response timeout '{:}': {:}".format(value, res), code=self._last(res))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Changed response timeout from '{:}' to '{:}'".format(self._runtime_settings.get("response_timeout", None), value))
@@ -541,10 +574,10 @@ class ELM327(object):
         try:
             res = self.send("ATAT" + str(value))
         except ELM327Error as err:
-            raise ELM327Error("Unable to set adaptive timing '{:}': {:}".format(value, err))
+            raise ELM327Error("Unable to set adaptive timing '{:}': {:}".format(value, err), code=err.code)
 
         if not self._is_ok(res):
-            raise ELM327Error("Invalid response when setting adaptive timing '{:}': {:}".format(value, res))
+            raise ELM327Error("Invalid response when setting adaptive timing '{:}': {:}".format(value, res), code=self._last(res))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Changed adaptive timing from '{:}' to '{:}'".format(self._runtime_settings.get("adaptive_timing", None), value))
@@ -571,10 +604,10 @@ class ELM327(object):
         try:
             res = self.send("ATSH" + value)
         except ELM327Error as err:
-            raise ELM327Error("Unable to set header '{:}': {:}".format(value, err))
+            raise ELM327Error("Unable to set header '{:}': {:}".format(value, err), code=err.code)
 
         if not self._is_ok(res):
-            raise ELM327Error("Invalid response when setting header '{:}': {:}".format(value, res))
+            raise ELM327Error("Invalid response when setting header '{:}': {:}".format(value, res), code=self._last(res))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Changed header from '{:}' to '{:}'".format(self._runtime_settings.get("header", None), value))
@@ -593,10 +626,10 @@ class ELM327(object):
         try:
             res = self.send("ATCAF" + str(int(value)))
         except ELM327Error as err:
-            raise ELM327Error("Unable to set CAN automatic formatting '{:}': {:}".format(value, err))
+            raise ELM327Error("Unable to set CAN automatic formatting '{:}': {:}".format(value, err), code=err.code)
 
         if not self._is_ok(res):
-            raise ELM327Error("Invalid response when setting CAN automatic formatting '{:}': {:}".format(value, res))
+            raise ELM327Error("Invalid response when setting CAN automatic formatting '{:}': {:}".format(value, res), code=self._last(res))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Changed CAN automatic formatting from '{:}' to '{:}'".format(self._runtime_settings.get("can_auto_format", None), value))
@@ -616,15 +649,15 @@ class ELM327(object):
             try:
                 res = self.send("ATCEA" + str(value))
             except ELM327Error as err:
-                raise ELM327Error("Unable to set CAN extended address '{:}': {:}".format(value, err))
+                raise ELM327Error("Unable to set CAN extended address '{:}': {:}".format(value, err), code=err.code)
         else:
             try:
                 res = self.send("ATCEA")
             except ELM327Error as err:
-                raise ELM327Error("Unable to clear CAN extended addresses: {:}".format(err))
+                raise ELM327Error("Unable to clear CAN extended addresses: {:}".format(err), code=err.code)
             
         if not self._is_ok(res):
-            raise ELM327Error("Invalid response when setting CAN extended address '{:}': {:}".format(value, res))
+            raise ELM327Error("Invalid response when setting CAN extended address '{:}': {:}".format(value, res), code=self._last(res))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("Changed CAN extended address from '{:}' to '{:}'".format(self._runtime_settings.get("can_extended_address", None), value))
@@ -663,9 +696,44 @@ class ELM327(object):
         return lines
 
 
+    def relay(self, cmd, raw_response=False):
+        """
+        Ralays any command to the interface.
+        """
+
+        try:
+
+            # If an AT command try to find a matching mapping
+            if cmd[:2].upper() in ["AT"]:
+                for regex, func in self._at_command_mappings:
+                    match = regex.match(cmd.strip().replace(" ", ""))
+                    if match:
+                        func(*match.groups())
+
+                        # All good, return a single OK line
+                        return [self.OK]
+
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug("No mapping found for AT command '{:}' - sending it directly to interface".format(cmd))
+
+            lines = self.send(cmd, raw_response=raw_response)
+
+        except Exception as ex:
+            logger.exception("Failed to relay command '{:}' to interface".format(cmd))
+
+            if not raw_response:
+                raise
+            else:
+
+                # Try to extract 'code' from ELM327Error exceptions
+                lines = [getattr(ex, "code", None) or "FAIL"]
+
+        return lines
+
+
     def send(self, cmd, delay=None, read_timeout=None, interrupt_delay=None, raw_response=False):
         """
-        Send raw command string.
+        Low-level send of a raw command string.
 
         Will write the given string, no questions asked.
         Returns read result (a list of line strings) after an optional delay.
@@ -766,7 +834,7 @@ class ELM327(object):
 
                     return []
                 else:
-                    raise ELM327Error(msg)
+                    raise ELM327Error(msg, code=line)
 
             ret.append(line)
 
@@ -788,7 +856,7 @@ class ELM327(object):
         # Change protocol
         res = self.send("ATTP" + ident)
         if not self._is_ok(res):
-            raise ELM327Error("Invalid response when manually changing to protocol '{:}': {:}".format(ident, res))
+            raise ELM327Error("Invalid response when manually changing to protocol '{:}': {:}".format(ident, res), code=self._last(res))
 
         # Verify protocol connectivity
         res_0100 = self._verify_protocol(ident, test=not verify)
@@ -811,7 +879,7 @@ class ELM327(object):
         # Set auto protocol mode
         res = self.send("ATSP0")
         if not self._is_ok(res):
-            raise ELM327Error("Invalid response when setting auto protocol mode: {:}".format(res))
+            raise ELM327Error("Invalid response when setting auto protocol mode: {:}".format(res), code=self._last(res))
 
         # Search for protocol and verify connectivity
         res_0100 = self._verify_protocol("auto", test=not verify)
@@ -882,14 +950,14 @@ class ELM327(object):
         if self._is_ok(res):
             logger.info("Updated programmable parameter '{:}' value '{:}'".format(id, value))
         else:
-            raise ELM327Error("Failed to set programmable parameter '{:}' value '{:}': {:}".format(id, value, res))
+            raise ELM327Error("Failed to set programmable parameter '{:}' value '{:}': {:}".format(id, value, res), code=self._last(res))
 
         if enable is not None:
             res = self.send("ATPP{:s} {:s}".format(id, "ON" if enable else "OFF"))
             if self._is_ok(res):
                 logger.info("{:} programmable parameter '{:}'".format("Enabled" if enable else "Disabled", id))
             else:
-                raise ELM327Error("Failed to {:} programmable parameter '{:}': {:}".format("enable" if enable else "disable", id, res))
+                raise ELM327Error("Failed to {:} programmable parameter '{:}': {:}".format("enable" if enable else "disable", id, res), code=self._last(res))
 
 
     def _ensure_pp(self, param, value, default=None):
@@ -1074,6 +1142,13 @@ class ELM327(object):
         return len(lines) == 1 and lines[0] == self.OK
 
 
+    def _last(self, lines):
+        if not lines:
+            return None
+
+        return lines[-1]
+
+
     def _has_message(self, lines, *args):
         for line in lines:
             for arg in args:
@@ -1081,4 +1156,9 @@ class ELM327(object):
                     return arg
 
         return None
+
+
+    def _immutable_setting(self, actual, wanted):
+        if actual != wanted:
+            raise ELM327Error("Immutable setting has actual value '{:}' but '{:}' is wanted".format(actual, wanted), code="IMMUTABLE")
 
