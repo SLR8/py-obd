@@ -230,8 +230,8 @@ class ELM327(object):
 
             # Immutable
             (re.compile("^ATE(?P<value>[0-1])$", re.IGNORECASE),        lambda val: self._immutable_setting(not self._echo_off, int(val))),
-            (re.compile("^ATH(?P<value>[0-1])$", re.IGNORECASE),        lambda val: self._immutable_setting(self._print_headers, int(val))),
-            (re.compile("^ATS(?P<value>[0-1])$", re.IGNORECASE),        lambda val: self._immutable_setting(0, int(val))),
+            #(re.compile("^ATH(?P<value>[0-1])$", re.IGNORECASE),        lambda val: self._immutable_setting(self._print_headers, int(val))),
+            #(re.compile("^ATS(?P<value>[0-1])$", re.IGNORECASE),        lambda val: self._immutable_setting(0, int(val))),
 
             # Mutable
             (re.compile("^ATAT(?P<value>[0-2])$", re.IGNORECASE),       self.set_adaptive_timing),
