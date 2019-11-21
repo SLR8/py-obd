@@ -334,7 +334,7 @@ class ELM327(object):
 
         # Try to communicate with the car, and load the correct protocol parser
         try:
-            prot = protocol if isinstance(protocol, dict) else {"id", protocol}
+            prot = protocol if isinstance(protocol, dict) else {"id": protocol}
             self.set_protocol(prot.pop("id", None), **prot)
         except ELM327Error as err:
             logger.warning(str(err))
@@ -352,6 +352,9 @@ class ELM327(object):
         """
         Closes connection to interface.
         """
+
+        if self._status == OBDStatus.NOT_CONNECTED:
+            return
 
         self._status = OBDStatus.NOT_CONNECTED
         
@@ -373,7 +376,10 @@ class ELM327(object):
 
         self.open(
             self._port.baudrate if self._port else None,
-            self._protocol.ID if self._protocol else None
+            protocol={
+                "id": getattr(self._protocol, "ID", None),
+                "baudrate": getattr(self._protocol, "baudrate", None)
+            } if not getattr(self._protocol, "autodetected", True) else None
         )
 
 

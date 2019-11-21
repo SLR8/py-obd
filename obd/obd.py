@@ -163,7 +163,6 @@ class OBD(object):
         self.supported_commands = set()
 
         if self.interface is not None:
-            logger.info("Closing connection")
             self.interface.close()
             self.interface = None
 

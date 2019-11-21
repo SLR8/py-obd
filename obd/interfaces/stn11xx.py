@@ -550,7 +550,7 @@ class STN11XX(ELM327):
         # Also set protocol baudrate if specified
         if baudrate != None:
             res = self.send("STPBR" + str(baudrate))
-            if not self._is_ok(res,):
+            if not self._is_ok(res):
                 raise STN11XXError("Invalid response when setting baudrate '{:}' for protocol '{:}': {:}".format(baudrate, ident, res), code=self._last(res))
 
         # Verify if the protocol has OBD-II support
