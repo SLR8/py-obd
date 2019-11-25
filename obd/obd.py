@@ -321,8 +321,17 @@ class OBD(object):
         try:
             if isinstance(expect_response, bool):  # NOTE: In Python 'bool' is child of 'int'
                 lines = self.interface.send(msg_string, raw_response=raw_response)
+
+                # Check for empty response
+                if expect_response and not raw_response and not lines:
+                    raise OBDError("Expected response but got empty")
+
             else:
-                lines = self.interface.send(msg_string + " " + str(expect_response), raw_response=raw_response)  # Specify the number of expected frames (to avoid waiting for timeout)
+                lines = self.interface.send("{:} {:X}".format(msg_string, expect_response), raw_response=raw_response)  # Specify the number of expected frames (to avoid waiting for timeout)
+
+                # Check expected response matches actual
+                if expect_response and not raw_response and expect_response != len(lines):
+                    raise OBDError("Expected response of {:} but got {:}".format(expect_response, len(lines)))
 
             # If echo prepend request message including header
             if echo:
