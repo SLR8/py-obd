@@ -191,3 +191,51 @@ def scan_serial():
             available.append(port)
 
     return available
+
+
+class BufferedSerialReader:
+    """
+    Adapted from: https://github.com/pyserial/pyserial/issues/216
+    """
+
+    def __init__(self, serial, size=2048):
+        self.serial = serial
+        self.size = size
+        self.buffer = bytearray()
+
+    @property
+    def in_waiting(self):
+        return len(self.buffer) + self.serial.in_waiting
+
+    def read_until(self, terminator):
+
+        # First look for terminator in buffer
+        i = self.buffer.find(terminator)
+        if i >= 0:
+            res = self.buffer[:i+1]
+            self.buffer = self.buffer[i+1:]
+
+            return res
+
+        # Read more data
+        while True:
+
+            # Read waiting bytes or up to buffer size
+            i = max(1, min(self.size, self.serial.in_waiting))
+            data = self.serial.read(i)
+
+            # No data read within timeout            
+            if not data:
+                return
+
+            # Look for terminator in data
+            i = data.find(terminator)
+            if i >= 0:
+                res = self.buffer + data[:i+1]
+                self.buffer[0:] = data[i+1:]
+
+                return res
+            else:
+
+                # Add data to buffer
+                self.buffer.extend(data)

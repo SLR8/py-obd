@@ -353,7 +353,7 @@ class STN11XX(ELM327):
                 self._port.timeout = timeout
 
 
-    def monitor_continuously(self, wait=False, limit=None, duration=None, enrich=None, **kwargs):
+    def monitor_continuously(self, wait=False, buffer=2048, limit=None, duration=None, enrich=None, **kwargs):
         """
         Monitor messages on bus continuously.
         """
@@ -369,7 +369,7 @@ class STN11XX(ELM327):
         while True:
             count += 1
 
-            res = self._read_line(wait=wait or count==1)  # Always wait for the first line
+            res = self._read_line(wait=wait or count==1, buffer_size=buffer)  # Always wait for the first line
 
             # Return what we got so far if no more lines to read
             if res == None:

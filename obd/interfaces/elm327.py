@@ -39,7 +39,7 @@ import time
 
 from timeit import default_timer as timer
 from ..protocols import *
-from ..utils import OBDStatus, OBDError
+from ..utils import BufferedSerialReader, OBDStatus, OBDError
 
 
 logger = logging.getLogger(__name__)
@@ -238,13 +238,15 @@ class ELM327(object):
             (re.compile("^ATR(?P<value>[0-1])$", re.IGNORECASE),        self.set_expect_responses),
             (re.compile("^ATD$", re.IGNORECASE),                        self.restore_defaults),
             (re.compile("^ATWS$", re.IGNORECASE),                       self.warm_reset),
-            (re.compile("^ATZ$", re.IGNORECASE),                        self.warm_reset),  # Do not perform hard reset            
+            (re.compile("^ATZ$", re.IGNORECASE),                        self.warm_reset),  # Do not perform hard reset
             (re.compile("^ATSH(?P<value>[0-9A-F]+)$", re.IGNORECASE),   self.set_header),
             (re.compile("^ATSP(?P<value>[0-9A-C])$", re.IGNORECASE),    lambda val: self.set_protocol(None if val == "0" else val, verify=False)),
             (re.compile("^ATST(?P<value>[0-9]{1,2})$", re.IGNORECASE),  self.set_response_timeout),
             (re.compile("^ATCAF(?P<value>[0-1])$", re.IGNORECASE),      self.set_can_auto_format),
             (re.compile("^ATCEA(?P<value>[0-9A-F]*)$", re.IGNORECASE),  self.set_can_extended_address),
         ]
+
+        self._read_line_buffer = None
 
 
     def open(self, baudrate, protocol=None, echo_off=True, print_headers=True):
@@ -1074,7 +1076,7 @@ class ELM327(object):
                     interrupt_delay = None
 
                     self._interrupt(ready_wait=False)
-                    
+
             # Log, and remove the "bytearray(   ...   )" part
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug("Read: " + repr(buffer)[10:-1])
@@ -1101,23 +1103,30 @@ class ELM327(object):
                 self._port.timeout = self._default_timeout
 
 
-    def _read_line(self, wait=True):
+    def _read_line(self, wait=True, buffer_size=2048):
         """
-        Low-level function to read a single line.
+        Low-level function to read a single line. The return value is an array of bytes.
         """
 
         if not self._port or not self._port.is_open:
             raise ELM327Error("Cannot read line when serial connection is not open")
 
+        # Prepare read buffer if not already initialized
+        if not self._read_line_buffer:
+            self._read_line_buffer = BufferedSerialReader(self._port, size=buffer_size)
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Created buffered serial reader of size {:}".format(buffer_size))
+
         # Decide to skip or continue and wait if no data pending
-        if not wait and not self._port.in_waiting:
+        if not wait and not self._read_line_buffer.in_waiting:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug("Skipping read line because no data is currently pending on serial port")
 
             return
 
         # Wait for read of entire line or until timeout
-        res = self._port.read_until(terminator="\r")
+        res = self._read_line_buffer.read_until(b"\r")
         if not res:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug("No line could be read on serial port within timeout of {:d} second(s)".format(self._port.timeout))
@@ -1135,7 +1144,7 @@ class ELM327(object):
 
             return
 
-        return res.strip()
+        return res  # NOTE: Returns byte array
 
 
     def _is_ok(self, lines, expect_echo=False):
