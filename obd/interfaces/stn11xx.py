@@ -317,7 +317,7 @@ class STN11XX(ELM327):
         self._runtime_settings["can_monitor_mode"] = value
 
 
-    def monitor(self, duration=10, mode=0, auto_format=False, filtering=False):
+    def monitor(self, duration=10, mode=0, auto_format=False, filtering=False, raw_response=False):
         """
         Monitor messages on bus. For CAN protocols, all messages will be treated as ISO 15765.
         """
@@ -347,7 +347,7 @@ class STN11XX(ELM327):
             else:
                 self._port.timeout = duration
 
-                return self.send("STM" if filtering else "STMA", interrupt_delay=duration)
+                return self.send("STM" if filtering else "STMA", interrupt_delay=duration, raw_response=raw_response)
         finally:
             if self._port.timeout != timeout:
                 self._port.timeout = timeout
