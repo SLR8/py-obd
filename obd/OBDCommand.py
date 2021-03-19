@@ -30,8 +30,8 @@
 #                                                                      #
 ########################################################################
 
-from .utils import *
-from .protocols import ECU
+from ..utils import *
+from ..protocols import ECU
 from .OBDResponse import OBDResponse
 
 import logging
@@ -48,13 +48,15 @@ class OBDCommand():
                  decoder,
                  ecu=ECU.ALL,
                  fast=False):
-        self.name      = name        # human readable name (also used as key in commands dict)
-        self.desc      = desc        # human readable description
-        self.command   = command     # command string
-        self.bytes     = _bytes      # number of bytes expected in return
-        self.decode    = decoder     # decoding function
-        self.ecu       = ecu         # ECU ID from which this command expects messages from
-        self.fast      = fast        # can an extra digit be added to the end of the command? (to make the ELM return early)
+        # human readable name (also used as key in commands dict)
+        self.name = name
+        self.desc = desc        # human readable description
+        self.command = command     # command string
+        self.bytes = _bytes      # number of bytes expected in return
+        self.decode = decoder     # decoding function
+        self.ecu = ecu         # ECU ID from which this command expects messages from
+        # can an extra digit be added to the end of the command? (to make the ELM return early)
+        self.fast = fast
 
     def clone(self):
         return OBDCommand(self.name,
@@ -81,11 +83,10 @@ class OBDCommand():
         else:
             return None
 
-
     def __call__(self, messages):
 
         # filter for applicable messages (from the right ECU(s))
-        for_us = lambda m: (self.ecu & m.ecu) > 0
+        def for_us(m): return (self.ecu & m.ecu) > 0
         messages = list(filter(for_us, messages))
 
         # guarantee data size for the decoder
@@ -98,10 +99,10 @@ class OBDCommand():
         if messages:
             r.value = self.decode(messages)
         else:
-            logger.warning(str(self) + " did not receive any acceptable messages")
+            logger.warning(
+                str(self) + " did not receive any acceptable messages")
 
         return r
-
 
     def __constrain_message_data(self, message):
         """ pads or chops the data field to the size specified by this command """
@@ -110,13 +111,14 @@ class OBDCommand():
                 # chop off the right side
                 message.data = message.data[:self.bytes]
 
-                logger.warning("Message was longer than expected - trimmed message: " + repr(message.data))
+                logger.warning(
+                    "Message was longer than expected - trimmed message: " + repr(message.data))
             elif len(message.data) < self.bytes:
                 # pad the right with zeros
                 message.data += (b'\x00' * (self.bytes - len(message.data)))
-                
-                logger.warning("Message was shorter than expected - padded message: " + repr(message.data))
 
+                logger.warning(
+                    "Message was shorter than expected - padded message: " + repr(message.data))
 
     def __str__(self):
         return "%s: %s" % (self.command, self.desc)
